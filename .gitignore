@@ -82,6 +82,9 @@ out
 .nuxt
 dist
 
+# React build output
+client/build
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and not Next.js

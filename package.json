@@ -1,0 +1,24 @@
+{
+  "name": "instant-paste",
+  "version": "1.0.0",
+  "description": "Real-time clipboard sync web app – instantly share text and images between any devices via browser",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:client": "cd client && npm run build",
+    "install:all": "npm install && cd client && npm install",
+    "setup": "npm install && cd client && npm install && cd .. && npm run build:client"
+  },
+  "keywords": ["clipboard", "sync", "real-time", "websocket", "paste"],
+  "author": "Ivaylo Chernev",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
