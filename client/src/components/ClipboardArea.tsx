@@ -55,12 +55,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
     const pasteArea = pasteAreaRef.current;
     if (pasteArea) {
-      pasteArea.addEventListener('paste', handlePaste as any);
+      pasteArea.addEventListener('paste', handlePaste as EventListener);
     }
 
     return () => {
       if (pasteArea) {
-        pasteArea.removeEventListener('paste', handlePaste as any);
+        pasteArea.removeEventListener('paste', handlePaste as EventListener);
       }
     };
   }, [onPaste]);
