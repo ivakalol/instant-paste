@@ -72,7 +72,7 @@ const App: React.FC = () => {
       // Auto-copy text if enabled and permissions allow
       if (message.contentType === 'text' && navigator.clipboard) {
         navigator.clipboard.writeText(content).catch(() => {
-          // Silent fail - clipboard write may not be available
+          showToast('Failed to copy to clipboard. Please check permissions.', 'error');
         });
       }
     }
