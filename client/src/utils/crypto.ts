@@ -9,7 +9,7 @@ export const encryptData = (data: string, password: string): string => {
     return encrypted;
   } catch (error) {
     console.error('Encryption error:', error);
-    throw new Error('Failed to encrypt data. Please try again.');
+    throw new Error(`Failed to encrypt data: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
