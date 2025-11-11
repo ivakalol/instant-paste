@@ -120,7 +120,13 @@ function handleJoin(ws, roomId) {
 // Handle creating a new room
 function handleCreate(ws) {
   let roomId;
+  const MAX_ATTEMPTS = 10;
+  let attempts = 0;
   do {
+    if (attempts++ >= MAX_ATTEMPTS) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
+      return;
+    }
     roomId = generateRoomId();
   } while (rooms.has(roomId));
 
