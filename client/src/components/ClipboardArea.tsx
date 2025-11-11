@@ -29,7 +29,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         
-        if (item.type.indexOf('text') === 0) {
+        if (item.type.startsWith('text/')) {
           item.getAsString((text) => {
             onPaste('text', text);
           });
