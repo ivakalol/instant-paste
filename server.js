@@ -220,10 +220,11 @@ const interval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
       handleLeave(ws);
-      return ws.terminate();
+      ws.terminate();
+    } else {
+      ws.isAlive = false;
+      ws.ping();
     }
-    ws.isAlive = false;
-    ws.ping();
   });
 }, 30000);
 
