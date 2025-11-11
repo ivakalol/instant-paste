@@ -94,6 +94,11 @@ function handleJoin(ws, roomId) {
     return;
   }
 
+  // Validate room ID: exactly 6 alphanumeric characters
+  if (typeof roomId !== 'string' || !/^[A-Za-z0-9]{6}$/.test(roomId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid room ID format. Room ID must be exactly 6 alphanumeric characters.' }));
+    return;
+  }
   roomId = roomId.toUpperCase();
   
   if (!rooms.has(roomId)) {
