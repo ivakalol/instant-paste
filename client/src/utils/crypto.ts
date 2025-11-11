@@ -2,10 +2,14 @@ import CryptoJS from 'crypto-js';
 
 export const encryptData = (data: string, password: string): string => {
   try {
-    return CryptoJS.AES.encrypt(data, password).toString();
+    const encrypted = CryptoJS.AES.encrypt(data, password).toString();
+    if (!encrypted) {
+      throw new Error('Encryption failed: Empty result');
+    }
+    return encrypted;
   } catch (error) {
     console.error('Encryption error:', error);
-    return data;
+    throw new Error('Failed to encrypt data. Please try again.');
   }
 };
 

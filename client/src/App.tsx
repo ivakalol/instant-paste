@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import RoomSelector from './components/RoomSelector';
 import RoomInfo from './components/RoomInfo';
 import ClipboardArea from './components/ClipboardArea';
+import Toast from './components/Toast';
 import { useWebSocket } from './utils/useWebSocket';
 import { ClipboardItem, WebSocketMessage } from './types';
 import { encryptData, decryptData } from './utils/crypto';
@@ -9,10 +10,16 @@ import './App.css';
 
 const MAX_HISTORY = 20;
 
+interface ToastState {
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 const App: React.FC = () => {
   const [history, setHistory] = useState<ClipboardItem[]>([]);
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Load history from localStorage
   useEffect(() => {
@@ -31,13 +38,22 @@ const App: React.FC = () => {
     localStorage.setItem('clipboardHistory', JSON.stringify(history));
   }, [history]);
 
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+  }, []);
+
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
     if (message.type === 'clipboard' && message.contentType && message.content) {
       let content = message.content;
       
       // Decrypt if encryption is enabled
       if (encryptionEnabled && encryptionPassword) {
-        content = decryptData(content, encryptionPassword);
+        const decrypted = decryptData(content, encryptionPassword);
+        if (decrypted === null) {
+          showToast('Failed to decrypt content. Wrong password?', 'error');
+          return;
+        }
+        content = decrypted;
       }
 
       const newItem: ClipboardItem = {
@@ -60,7 +76,7 @@ const App: React.FC = () => {
         });
       }
     }
-  }, [encryptionEnabled, encryptionPassword]);
+  }, [encryptionEnabled, encryptionPassword, showToast]);
 
   const { roomState, sendMessage, createRoom, joinRoom, leaveRoom } = useWebSocket(
     handleClipboardReceived
@@ -71,7 +87,13 @@ const App: React.FC = () => {
     
     // Encrypt if encryption is enabled
     if (encryptionEnabled && encryptionPassword) {
-      contentToSend = encryptData(content, encryptionPassword);
+      try {
+        contentToSend = encryptData(content, encryptionPassword);
+      } catch (error) {
+        console.error('Failed to encrypt data:', error);
+        showToast('Failed to encrypt data. Content not sent.', 'error');
+        return;
+      }
     }
 
     // Add to local history
@@ -94,7 +116,7 @@ const App: React.FC = () => {
       contentType: type,
       content: contentToSend,
     });
-  }, [sendMessage, encryptionEnabled, encryptionPassword]);
+  }, [sendMessage, encryptionEnabled, encryptionPassword, showToast]);
 
   const handleToggleEncryption = (enabled: boolean, password: string) => {
     setEncryptionEnabled(enabled);
@@ -119,11 +141,13 @@ const App: React.FC = () => {
               onLeave={handleLeaveRoom}
               onToggleEncryption={handleToggleEncryption}
               encryptionEnabled={encryptionEnabled}
+              showToast={showToast}
             />
             <ClipboardArea 
               onPaste={handlePaste}
               history={history}
               encryptionEnabled={encryptionEnabled}
+              showToast={showToast}
             />
           </>
         )}
@@ -141,6 +165,14 @@ const App: React.FC = () => {
           </a>
         </p>
       </footer>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

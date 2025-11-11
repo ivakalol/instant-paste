@@ -6,13 +6,15 @@ interface RoomInfoProps {
   onLeave: () => void;
   onToggleEncryption: (enabled: boolean, password: string) => void;
   encryptionEnabled: boolean;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const RoomInfo: React.FC<RoomInfoProps> = ({ 
   roomState, 
   onLeave,
   onToggleEncryption,
-  encryptionEnabled 
+  encryptionEnabled,
+  showToast
 }) => {
   const [showEncryption, setShowEncryption] = useState(false);
   const [password, setPassword] = useState('');
@@ -27,10 +29,14 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
     }
   };
 
-  const copyRoomId = () => {
+  const copyRoomId = async () => {
     if (roomState.roomId) {
-      navigator.clipboard.writeText(roomState.roomId);
-      alert('Room ID copied to clipboard!');
+      try {
+        await navigator.clipboard.writeText(roomState.roomId);
+        showToast('Room ID copied to clipboard!', 'success');
+      } catch (error) {
+        showToast('Failed to copy room ID', 'error');
+      }
     }
   };
 

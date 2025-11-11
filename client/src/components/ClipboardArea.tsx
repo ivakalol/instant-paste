@@ -6,22 +6,25 @@ interface ClipboardAreaProps {
   onPaste: (type: string, content: string) => void;
   history: ClipboardItem[];
   encryptionEnabled: boolean;
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({ 
   onPaste, 
   history,
-  encryptionEnabled 
+  encryptionEnabled,
+  showToast
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const pasteAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
-      e.preventDefault();
+    const handlePaste = async (e: Event) => {
+      const clipboardEvent = e as ClipboardEvent;
+      clipboardEvent.preventDefault();
       
-      const items = e.clipboardData?.items;
+      const items = clipboardEvent.clipboardData?.items;
       if (!items) return;
 
       for (let i = 0; i < items.length; i++) {
@@ -55,12 +58,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
     const pasteArea = pasteAreaRef.current;
     if (pasteArea) {
-      pasteArea.addEventListener('paste', handlePaste as EventListener);
+      pasteArea.addEventListener('paste', handlePaste);
     }
 
     return () => {
       if (pasteArea) {
-        pasteArea.removeEventListener('paste', handlePaste as EventListener);
+        pasteArea.removeEventListener('paste', handlePaste);
       }
     };
   }, [onPaste]);
@@ -120,7 +123,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     if (item.type === 'text') {
       const success = await copyToClipboard(item.content);
       if (success) {
-        alert('Copied to clipboard!');
+        showToast('Copied to clipboard!', 'success');
+      } else {
+        showToast('Failed to copy to clipboard', 'error');
       }
     }
   };

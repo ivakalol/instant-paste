@@ -13,6 +13,8 @@ export const useWebSocket = (
   onClipboardReceived: (message: WebSocketMessage) => void
 ): UseWebSocketReturn => {
   const ws = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null,
     connected: false,
@@ -73,7 +75,7 @@ export const useWebSocket = (
       });
       
       // Attempt to reconnect after 3 seconds
-      setTimeout(() => {
+      reconnectTimeoutRef.current = setTimeout(() => {
         if (ws.current?.readyState === WebSocket.CLOSED) {
           connect();
         }
@@ -89,6 +91,13 @@ export const useWebSocket = (
     connect();
 
     return () => {
+      // Clear any pending timeouts
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
       if (ws.current) {
         ws.current.close();
       }
@@ -101,7 +110,11 @@ export const useWebSocket = (
     } else {
       // Retry after a short delay if connection is still being established
       if (ws.current && ws.current.readyState === WebSocket.CONNECTING) {
-        setTimeout(() => {
+        // Clear any existing retry timeout
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+        }
+        retryTimeoutRef.current = setTimeout(() => {
           if (ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify(message));
           }
