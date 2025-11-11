@@ -13,6 +13,8 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       document.body.appendChild(textArea);
       textArea.focus();
       textArea.select();
+      // WARNING: document.execCommand('copy') is deprecated and may not work in future browsers.
+      // Consider removing this fallback when support for older browsers is no longer required.
       const result = document.execCommand('copy');
       textArea.remove();
       return result;
