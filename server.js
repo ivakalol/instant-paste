@@ -3,6 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -18,14 +19,12 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-// Helper function to generate room ID
+// Helper function to generate room ID using UUID (collision-free)
 function generateRoomId() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 6; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  // Generate UUID and take first 6 characters in uppercase for readability
+  // UUIDs are collision-free, so no need for retry logic
+  const uuid = crypto.randomUUID();
+  return uuid.replace(/-/g, '').substring(0, 6).toUpperCase();
 }
 
 // WebSocket connection handler
@@ -119,16 +118,8 @@ function handleJoin(ws, roomId) {
 
 // Handle creating a new room
 function handleCreate(ws) {
-  let roomId;
-  const MAX_ATTEMPTS = 10;
-  let attempts = 0;
-  do {
-    if (attempts++ >= MAX_ATTEMPTS) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
-      return;
-    }
-    roomId = generateRoomId();
-  } while (rooms.has(roomId));
+  // Generate collision-free room ID using UUID
+  const roomId = generateRoomId();
 
   rooms.set(roomId, new Set());
   ws.roomId = roomId;
