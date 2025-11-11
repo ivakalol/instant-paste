@@ -9,8 +9,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        return cache.addAll(urlsToCache).catch(() => {
-          // Ignore cache errors during install
+        return cache.addAll(urlsToCache).catch((error) => {
+          // Log cache errors during install for debugging
+          console.error('Service Worker installation: cache.addAll failed', error);
         });
       })
   );
