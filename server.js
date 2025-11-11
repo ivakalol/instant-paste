@@ -235,10 +235,14 @@ function broadcastToRoom(roomId, data, excludeWs = null) {
   if (!room) return;
 
   const message = JSON.stringify(data);
-  room.forEach((client) => {
-    if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
+  
+  // Use setImmediate to prevent blocking event loop with large broadcasts
+  setImmediate(() => {
+    room.forEach((client) => {
+      if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
   });
 }
 

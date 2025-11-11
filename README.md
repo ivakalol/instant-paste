@@ -223,8 +223,8 @@ Device A                    Server                     Device B
 
 ## Limitations ⚠️
 
-- Maximum file size: ~50MB (configurable in server.js)
-- Binary data is base64 encoded for WebSocket transmission
+- Maximum file size: ~37.5MB original file size (~50MB base64-encoded, configurable in server.js)
+- Binary data is base64 encoded for WebSocket transmission (increases size by ~33%)
 - Clipboard history is stored locally (browser localStorage)
 - Video support depends on browser codec support
 

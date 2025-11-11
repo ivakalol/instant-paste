@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ClipboardItem } from '../types';
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
@@ -16,8 +16,48 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   showToast
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const pasteAreaRef = useRef<HTMLDivElement>(null);
+  const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper function to read and process files
+  const processFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      if (file.type.startsWith('image/')) {
+        onPaste('image', reader.result as string);
+      } else if (file.type.startsWith('video/')) {
+        onPaste('video', reader.result as string);
+      } else if (file.type.startsWith('text/')) {
+        onPaste('text', reader.result as string);
+      }
+    };
+
+    if (file.type.startsWith('text/')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
+    }
+  }, [onPaste]);
+
+  // Helper function to process clipboard items
+  const processClipboardItem = useCallback((item: DataTransferItem) => {
+    if (item.type.startsWith('text/')) {
+      item.getAsString((text) => {
+        onPaste('text', text);
+      });
+    } else if (item.type.startsWith('image/')) {
+      const blob = item.getAsFile();
+      if (blob) {
+        processFile(blob);
+      }
+    } else if (item.type.startsWith('video/')) {
+      const blob = item.getAsFile();
+      if (blob) {
+        processFile(blob);
+      }
+    }
+  }, [onPaste, processFile]);
 
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
@@ -27,31 +67,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       if (!items) return;
 
       for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        
-        if (item.type.startsWith('text/')) {
-          item.getAsString((text) => {
-            onPaste('text', text);
-          });
-        } else if (item.type.indexOf('image') === 0) {
-          const blob = item.getAsFile();
-          if (blob) {
-            const reader = new FileReader();
-            reader.onload = () => {
-              onPaste('image', reader.result as string);
-            };
-            reader.readAsDataURL(blob);
-          }
-        } else if (item.type.indexOf('video') === 0) {
-          const blob = item.getAsFile();
-          if (blob) {
-            const reader = new FileReader();
-            reader.onload = () => {
-              onPaste('video', reader.result as string);
-            };
-            reader.readAsDataURL(blob);
-          }
-        }
+        processClipboardItem(items[i]);
       }
     };
 
@@ -65,7 +81,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         pasteArea.removeEventListener('paste', handlePaste);
       }
     };
-  }, [onPaste]);
+  }, [processClipboardItem]);
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,48 +89,14 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      const file = files[0];
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        if (file.type.startsWith('image/')) {
-          onPaste('image', reader.result as string);
-        } else if (file.type.startsWith('video/')) {
-          onPaste('video', reader.result as string);
-        } else if (file.type.startsWith('text/')) {
-          onPaste('text', reader.result as string);
-        }
-      };
-
-      if (file.type.startsWith('text/')) {
-        reader.readAsText(file);
-      } else {
-        reader.readAsDataURL(file);
-      }
+      processFile(files[0]);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const file = files[0];
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        if (file.type.startsWith('image/')) {
-          onPaste('image', reader.result as string);
-        } else if (file.type.startsWith('video/')) {
-          onPaste('video', reader.result as string);
-        } else if (file.type.startsWith('text/')) {
-          onPaste('text', reader.result as string);
-        }
-      };
-
-      if (file.type.startsWith('text/')) {
-        reader.readAsText(file);
-      } else {
-        reader.readAsDataURL(file);
-      }
+      processFile(files[0]);
     }
   };
 

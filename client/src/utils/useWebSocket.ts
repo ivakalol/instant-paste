@@ -16,6 +16,7 @@ export const useWebSocket = (
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onClipboardReceivedRef = useRef(onClipboardReceived);
+  const previousRoomIdRef = useRef<string | null>(null);
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null,
     connected: false,
@@ -36,6 +37,12 @@ export const useWebSocket = (
     ws.current.onopen = () => {
       console.log('WebSocket connected');
       setRoomState(prev => ({ ...prev, connected: true }));
+      
+      // Rejoin previous room if reconnecting
+      if (previousRoomIdRef.current) {
+        console.log(`Rejoining room: ${previousRoomIdRef.current}`);
+        ws.current?.send(JSON.stringify({ type: 'join', roomId: previousRoomIdRef.current }));
+      }
     };
 
     ws.current.onmessage = (event) => {
@@ -45,8 +52,10 @@ export const useWebSocket = (
         switch (message.type) {
           case 'created':
           case 'joined':
+            const roomId = message.roomId || null;
+            previousRoomIdRef.current = roomId; // Store for reconnection
             setRoomState({
-              roomId: message.roomId || null,
+              roomId,
               connected: true,
               clientCount: message.clients || 1,
             });
@@ -117,15 +126,15 @@ export const useWebSocket = (
     } else {
       // Retry after a short delay if connection is still being established
       if (ws.current && ws.current.readyState === WebSocket.CONNECTING) {
-        // Clear any existing retry timeout
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
+        // Only create retry timeout if one isn't already pending
+        if (!retryTimeoutRef.current) {
+          retryTimeoutRef.current = setTimeout(() => {
+            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+              ws.current.send(JSON.stringify(message));
+            }
+            retryTimeoutRef.current = null; // Clear ref after execution
+          }, 500);
         }
-        retryTimeoutRef.current = setTimeout(() => {
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            ws.current.send(JSON.stringify(message));
-          }
-        }, 500);
         return true; // Will retry
       }
       return false; // Connection not available
@@ -142,6 +151,7 @@ export const useWebSocket = (
 
   const leaveRoom = useCallback(() => {
     sendMessage({ type: 'leave' });
+    previousRoomIdRef.current = null; // Clear room on intentional leave
     setRoomState({
       roomId: null,
       connected: true,
