@@ -145,18 +145,18 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
   return (
     <div className="clipboard-area">
-      <div
+      <textarea
         ref={pasteAreaRef}
         className={`paste-zone ${isDragging ? 'dragging' : ''}`}
-        contentEditable={true}
+        placeholder="Paste or type here (Ctrl+V / Cmd+V) or drag & drop files..."
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        suppressContentEditableWarning={true}
-        data-placeholder="Paste or type here (Ctrl+V / Cmd+V) or drag & drop files..."
+        rows={3}
+        style={{ resize: 'vertical' }}
       />
       
       <div className="actions">
