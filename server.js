@@ -19,12 +19,16 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-// Helper function to generate room ID using UUID (collision-free)
+// Helper function to generate a unique room ID using UUID
 function generateRoomId() {
-  // Generate UUID and take first 6 characters in uppercase for readability
-  // UUIDs are collision-free, so no need for retry logic
-  const uuid = crypto.randomUUID();
-  return uuid.replace(/-/g, '').substring(0, 6).toUpperCase();
+  // Generate UUID and take first 8 characters in uppercase for readability
+  // Check for collisions with existing room IDs
+  let roomId;
+  do {
+    const uuid = crypto.randomUUID();
+    roomId = uuid.replace(/-/g, '').substring(0, 8).toUpperCase();
+  } while (rooms.has(roomId));
+  return roomId;
 }
 
 // WebSocket connection handler
