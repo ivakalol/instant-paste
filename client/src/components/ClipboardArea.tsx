@@ -20,11 +20,10 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const handlePaste = async (e: Event) => {
-      const clipboardEvent = e as ClipboardEvent;
-      clipboardEvent.preventDefault();
+    const handlePaste = async (e: ClipboardEvent) => {
+      e.preventDefault();
       
-      const items = clipboardEvent.clipboardData?.items;
+      const items = e.clipboardData?.items;
       if (!items) return;
 
       for (let i = 0; i < items.length; i++) {
