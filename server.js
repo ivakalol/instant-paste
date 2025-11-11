@@ -121,14 +121,8 @@ function handleJoin(ws, roomId) {
 function handleCreate(ws) {
   let roomId;
   const MAX_ATTEMPTS = 10;
-  let roomId;
-  const MAX_ATTEMPTS = 10;
   let attempts = 0;
   do {
-    if (attempts++ >= MAX_ATTEMPTS) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
-      return;
-    }
     if (attempts++ >= MAX_ATTEMPTS) {
       ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
       return;
@@ -177,6 +171,26 @@ function handleLeave(ws) {
 function handleClipboard(ws, data) {
   if (!ws.roomId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Not in a room' }));
+    return;
+  }
+
+  // Validate contentType
+  const validContentTypes = ['text', 'image', 'video'];
+  if (!data.contentType || !validContentTypes.includes(data.contentType)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid content type' }));
+    return;
+  }
+
+  // Validate content exists and size
+  if (!data.content || typeof data.content !== 'string') {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid content' }));
+    return;
+  }
+
+  // Enforce content size limit (50MB for base64, which is ~37.5MB actual size)
+  const MAX_CONTENT_SIZE = 50 * 1024 * 1024; // 50MB
+  if (data.content.length > MAX_CONTENT_SIZE) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Content too large. Maximum size is 50MB' }));
     return;
   }
 

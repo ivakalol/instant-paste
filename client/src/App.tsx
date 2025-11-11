@@ -111,11 +111,15 @@ const App: React.FC = () => {
     });
 
     // Send to other clients
-    sendMessage({
+    const sent = sendMessage({
       type: 'clipboard',
       contentType: type,
       content: contentToSend,
     });
+
+    if (!sent) {
+      showToast('Failed to send content. WebSocket not connected.', 'error');
+    }
   }, [sendMessage, encryptionEnabled, encryptionPassword, showToast]);
 
   const handleToggleEncryption = (enabled: boolean, password: string) => {

@@ -3,7 +3,7 @@ import { WebSocketMessage, RoomState } from '../types';
 
 interface UseWebSocketReturn {
   roomState: RoomState;
-  sendMessage: (message: WebSocketMessage) => void;
+  sendMessage: (message: WebSocketMessage) => boolean;
   createRoom: () => void;
   joinRoom: (roomId: string) => void;
   leaveRoom: () => void;
@@ -15,11 +15,17 @@ export const useWebSocket = (
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const onClipboardReceivedRef = useRef(onClipboardReceived);
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null,
     connected: false,
     clientCount: 0,
   });
+
+  // Keep ref updated with latest callback
+  useEffect(() => {
+    onClipboardReceivedRef.current = onClipboardReceived;
+  }, [onClipboardReceived]);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -53,7 +59,7 @@ export const useWebSocket = (
             }));
             break;
           case 'clipboard':
-            onClipboardReceived(message);
+            onClipboardReceivedRef.current(message);
             break;
           case 'error':
             console.error('WebSocket error:', message.message);
@@ -85,7 +91,7 @@ export const useWebSocket = (
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [onClipboardReceived]);
+  }, []);
 
   useEffect(() => {
     connect();
@@ -104,9 +110,10 @@ export const useWebSocket = (
     };
   }, [connect]);
 
-  const sendMessage = useCallback((message: WebSocketMessage) => {
+  const sendMessage = useCallback((message: WebSocketMessage): boolean => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(message));
+      return true;
     } else {
       // Retry after a short delay if connection is still being established
       if (ws.current && ws.current.readyState === WebSocket.CONNECTING) {
@@ -119,7 +126,9 @@ export const useWebSocket = (
             ws.current.send(JSON.stringify(message));
           }
         }, 500);
+        return true; // Will retry
       }
+      return false; // Connection not available
     }
   }, []);
 
