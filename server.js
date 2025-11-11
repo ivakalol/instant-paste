@@ -121,8 +121,14 @@ function handleJoin(ws, roomId) {
 function handleCreate(ws) {
   let roomId;
   const MAX_ATTEMPTS = 10;
+  let roomId;
+  const MAX_ATTEMPTS = 10;
   let attempts = 0;
   do {
+    if (attempts++ >= MAX_ATTEMPTS) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
+      return;
+    }
     if (attempts++ >= MAX_ATTEMPTS) {
       ws.send(JSON.stringify({ type: 'error', message: 'Failed to generate unique room ID. Please try again.' }));
       return;
