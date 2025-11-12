@@ -35,7 +35,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     };
     reader.onerror = () => {
       console.error('Failed to read file:', reader.error);
-      showToast?.('Failed to read file. Please try again.', 'error');
+      showToast('Failed to read file. Please try again.', 'error');
     };
 
     if (file.type.startsWith('text/')) {
