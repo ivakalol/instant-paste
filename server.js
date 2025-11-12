@@ -26,7 +26,7 @@ function generateRoomId() {
   let roomId;
   do {
     const uuid = crypto.randomUUID();
-    roomId = uuid.replace(/-/g, '').substring(0, 8).toUpperCase();
+    roomId = uuid.replace(/-/g, '').substring(0, 6).toUpperCase();
   } while (rooms.has(roomId));
   return roomId;
 }
