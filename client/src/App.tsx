@@ -27,9 +27,20 @@ const App: React.FC = () => {
     const savedHistory = localStorage.getItem('clipboardHistory');
     if (savedHistory) {
       try {
-        setHistory(JSON.parse(savedHistory));
+        const parsed = JSON.parse(savedHistory);
+        // Validate structure before setting state
+        if (Array.isArray(parsed) && parsed.every(item => 
+          item && typeof item === 'object' && 
+          'type' in item && 'content' in item && 'timestamp' in item
+        )) {
+          setHistory(parsed);
+        } else {
+          console.warn('Invalid history format in localStorage, clearing...');
+          localStorage.removeItem('clipboardHistory');
+        }
       } catch (error) {
         console.error('Failed to load history:', error);
+        localStorage.removeItem('clipboardHistory');
       }
     }
   }, []);
@@ -71,14 +82,23 @@ const App: React.FC = () => {
       });
 
       // Auto-copy text if enabled by user preference and permissions allow
+      // Rate limit: only allow one auto-copy every 2 seconds to prevent clipboard poisoning
       if (autoCopyEnabled && message.contentType === 'text' && navigator.clipboard) {
-        navigator.clipboard.writeText(content)
-          .then(() => {
-            showToast('Text auto-copied to clipboard', 'success');
-          })
-          .catch(() => {
-            showToast('Failed to auto-copy. Please check permissions.', 'error');
-          });
+        const now = Date.now();
+        const lastAutoCopy = (window as any).__lastAutoCopy || 0;
+        
+        if (now - lastAutoCopy > 2000) {
+          (window as any).__lastAutoCopy = now;
+          navigator.clipboard.writeText(content)
+            .then(() => {
+              showToast('Text auto-copied to clipboard', 'success');
+            })
+            .catch(() => {
+              showToast('Failed to auto-copy. Please check permissions.', 'error');
+            });
+        } else {
+          console.log('Auto-copy rate limited, skipping...');
+        }
       }
     }
   }, [encryptionEnabled, encryptionPassword, autoCopyEnabled, showToast]);

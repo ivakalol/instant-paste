@@ -17,6 +17,7 @@ export const useWebSocket = (
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onClipboardReceivedRef = useRef(onClipboardReceived);
   const previousRoomIdRef = useRef<string | null>(null);
+  const reconnectAttemptRef = useRef<number>(0);
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null,
     connected: false,
@@ -37,6 +38,9 @@ export const useWebSocket = (
     ws.current.onopen = () => {
       console.log('WebSocket connected');
       setRoomState(prev => ({ ...prev, connected: true }));
+      
+      // Reset reconnect attempt counter on successful connection
+      reconnectAttemptRef.current = 0;
       
       // Rejoin previous room if reconnecting
       if (previousRoomIdRef.current) {
@@ -89,12 +93,16 @@ export const useWebSocket = (
         clientCount: 0,
       }));
       
-      // Attempt to reconnect after 3 seconds
+      // Implement exponential backoff for reconnection (3s, 6s, 12s, max 30s)
+      reconnectAttemptRef.current += 1;
+      const delay = Math.min(3000 * Math.pow(2, reconnectAttemptRef.current - 1), 30000);
+      
       reconnectTimeoutRef.current = setTimeout(() => {
         if (ws.current?.readyState === WebSocket.CLOSED) {
+          console.log(`Reconnecting... attempt ${reconnectAttemptRef.current} (delay: ${delay}ms)`);
           connect();
         }
-      }, 3000);
+      }, delay);
     };
 
     ws.current.onerror = (error) => {
@@ -128,12 +136,16 @@ export const useWebSocket = (
       if (ws.current && ws.current.readyState === WebSocket.CONNECTING) {
         // Only create retry timeout if one isn't already pending
         if (!retryTimeoutRef.current) {
-          retryTimeoutRef.current = setTimeout(() => {
+          const timeoutId = setTimeout(() => {
             if (ws.current && ws.current.readyState === WebSocket.OPEN) {
               ws.current.send(JSON.stringify(message));
             }
-            retryTimeoutRef.current = null; // Clear ref after execution
+            // Clear ref after execution - use the captured timeoutId
+            if (retryTimeoutRef.current === timeoutId) {
+              retryTimeoutRef.current = null;
+            }
           }, 500);
+          retryTimeoutRef.current = timeoutId;
         }
         return true; // Will retry
       }
