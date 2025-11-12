@@ -246,14 +246,24 @@ function broadcastToRoom(roomId, data, excludeWs = null) {
 
   const message = JSON.stringify(data);
   
-  // Use setImmediate to prevent blocking event loop with large broadcasts
-  setImmediate(() => {
-    room.forEach((client) => {
+  // Use batched setImmediate to prevent blocking event loop with large broadcasts
+  const BATCH_SIZE = 50; // Tune this value as needed
+  const clients = Array.from(room);
+  let index = 0;
+  function processBatch() {
+    const end = Math.min(index + BATCH_SIZE, clients.length);
+    for (let i = index; i < end; i++) {
+      const client = clients[i];
       if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
         client.send(message);
       }
-    });
-  });
+    }
+    index = end;
+    if (index < clients.length) {
+      setImmediate(processBatch);
+    }
+  }
+  setImmediate(processBatch);
 }
 
 // Heartbeat to keep connections alive
