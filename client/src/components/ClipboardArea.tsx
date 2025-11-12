@@ -32,13 +32,17 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         onPaste('text', reader.result as string);
       }
     };
+    reader.onerror = () => {
+      console.error('Failed to read file:', reader.error);
+      showToast?.('Failed to read file. Please try again.', 'error');
+    };
 
     if (file.type.startsWith('text/')) {
       reader.readAsText(file);
     } else {
       reader.readAsDataURL(file);
     }
-  }, [onPaste]);
+  }, [onPaste, showToast]);
 
   // Helper function to process clipboard items
   const processClipboardItem = useCallback((item: DataTransferItem) => {
