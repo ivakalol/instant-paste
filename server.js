@@ -190,12 +190,20 @@ function handleClipboard(ws, data) {
   // Enforce content size limit (50MB actual decoded size)
   const MAX_CONTENT_SIZE = 50 * 1024 * 1024; // 50MB
   let decodedSize = 0;
-  try {
-    decodedSize = Buffer.from(data.content, 'base64').length;
-  } catch (e) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Invalid base64 content' }));
-    return;
+  
+  if (data.contentType === 'text') {
+    // For text, measure string byte length directly
+    decodedSize = Buffer.byteLength(data.content, 'utf8');
+  } else {
+    // For images/videos, decode base64 to get actual size
+    try {
+      decodedSize = Buffer.from(data.content, 'base64').length;
+    } catch (e) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid base64 content' }));
+      return;
+    }
   }
+  
   if (decodedSize > MAX_CONTENT_SIZE) {
     ws.send(JSON.stringify({ type: 'error', message: 'Content too large. Maximum size is 50MB' }));
     return;

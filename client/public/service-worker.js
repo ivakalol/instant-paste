@@ -1,17 +1,16 @@
 const CACHE_NAME = 'instant-paste-v1';
-const urlsToCache = [
-  '/',
-  '/static/css/main.css',
-  '/static/js/main.js',
-];
 
 self.addEventListener('install', (event) => {
+  // Skip waiting to activate immediately
+  self.skipWaiting();
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        return cache.addAll(urlsToCache).catch((error) => {
-          // Log cache errors during install for debugging
-          console.error('Service Worker installation: cache.addAll failed', error);
+        // Only cache the root page on install
+        // Other assets will be cached on first use (see fetch handler)
+        return cache.add('/').catch((error) => {
+          console.error('Service Worker installation: failed to cache root', error);
         });
       })
   );
@@ -24,7 +23,24 @@ self.addEventListener('fetch', (event) => {
         if (response) {
           return response;
         }
-        return fetch(event.request);
+        
+        // Fetch and cache static assets dynamically
+        return fetch(event.request).then((response) => {
+          // Only cache successful GET requests for static assets
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+          
+          // Cache JS, CSS, images, and fonts
+          if (event.request.url.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)$/)) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          
+          return response;
+        });
       })
   );
 });

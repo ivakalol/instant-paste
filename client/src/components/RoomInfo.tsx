@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { RoomState } from '../types';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface RoomInfoProps {
   roomState: RoomState;
   onLeave: () => void;
   onToggleEncryption: (enabled: boolean, password: string) => void;
   encryptionEnabled: boolean;
+  autoCopyEnabled: boolean;
+  onToggleAutoCopy: (enabled: boolean) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -14,6 +17,8 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   onLeave,
   onToggleEncryption,
   encryptionEnabled,
+  autoCopyEnabled,
+  onToggleAutoCopy,
   showToast
 }) => {
   const [showEncryption, setShowEncryption] = useState(false);
@@ -31,10 +36,10 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
 
   const copyRoomId = async () => {
     if (roomState.roomId) {
-      try {
-        await navigator.clipboard.writeText(roomState.roomId);
+      const success = await copyToClipboard(roomState.roomId);
+      if (success) {
         showToast('Room ID copied to clipboard!', 'success');
-      } catch (error) {
+      } else {
         showToast('Failed to copy room ID', 'error');
       }
     }
@@ -65,6 +70,14 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           className="btn btn-small"
         >
           🔐 {encryptionEnabled ? 'Encryption On' : 'Enable Encryption'}
+        </button>
+        
+        <button 
+          onClick={() => onToggleAutoCopy(!autoCopyEnabled)}
+          className="btn btn-small"
+          title="Auto-copy received text to clipboard"
+        >
+          📋 {autoCopyEnabled ? 'Auto-Copy On' : 'Auto-Copy Off'}
         </button>
         
         {showEncryption && (

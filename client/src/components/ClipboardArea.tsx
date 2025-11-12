@@ -16,6 +16,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   showToast
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [typedText, setTypedText] = useState('');
   const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,12 +130,30 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
+  const handleSendText = () => {
+    if (typedText.trim()) {
+      onPaste('text', typedText);
+      setTypedText('');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Send on Ctrl+Enter or Cmd+Enter
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSendText();
+    }
+  };
+
   return (
     <div className="clipboard-area">
       <textarea
         ref={pasteAreaRef}
         className={`paste-zone ${isDragging ? 'dragging' : ''}`}
         placeholder="Paste or type here (Ctrl+V / Cmd+V) or drag & drop files..."
+        value={typedText}
+        onChange={(e) => setTypedText(e.target.value)}
+        onKeyDown={handleKeyDown}
         onDragOver={(e) => {
           e.preventDefault();
           setIsDragging(true);
@@ -146,6 +165,13 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       />
       
       <div className="actions">
+        <button 
+          onClick={handleSendText}
+          className="send-btn"
+          disabled={!typedText.trim()}
+        >
+          📤 Send Text
+        </button>
         <button 
           onClick={() => fileInputRef.current?.click()}
           className="btn btn-small"

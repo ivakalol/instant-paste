@@ -83,11 +83,11 @@ export const useWebSocket = (
 
     ws.current.onclose = () => {
       console.log('WebSocket disconnected');
-      setRoomState({
-        roomId: null,
+      setRoomState(prev => ({
+        ...prev,
         connected: false,
         clientCount: 0,
-      });
+      }));
       
       // Attempt to reconnect after 3 seconds
       reconnectTimeoutRef.current = setTimeout(() => {

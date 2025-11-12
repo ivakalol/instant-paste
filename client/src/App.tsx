@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<ClipboardItem[]>([]);
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [autoCopyEnabled, setAutoCopyEnabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   // Load history from localStorage
@@ -69,14 +70,18 @@ const App: React.FC = () => {
         return updated;
       });
 
-      // Auto-copy text if enabled and permissions allow
-      if (message.contentType === 'text' && navigator.clipboard) {
-        navigator.clipboard.writeText(content).catch(() => {
-          showToast('Failed to copy to clipboard. Please check permissions.', 'error');
-        });
+      // Auto-copy text if enabled by user preference and permissions allow
+      if (autoCopyEnabled && message.contentType === 'text' && navigator.clipboard) {
+        navigator.clipboard.writeText(content)
+          .then(() => {
+            showToast('Text auto-copied to clipboard', 'success');
+          })
+          .catch(() => {
+            showToast('Failed to auto-copy. Please check permissions.', 'error');
+          });
       }
     }
-  }, [encryptionEnabled, encryptionPassword, showToast]);
+  }, [encryptionEnabled, encryptionPassword, autoCopyEnabled, showToast]);
 
   const { roomState, sendMessage, createRoom, joinRoom, leaveRoom } = useWebSocket(
     handleClipboardReceived
@@ -145,6 +150,8 @@ const App: React.FC = () => {
               onLeave={handleLeaveRoom}
               onToggleEncryption={handleToggleEncryption}
               encryptionEnabled={encryptionEnabled}
+              autoCopyEnabled={autoCopyEnabled}
+              onToggleAutoCopy={setAutoCopyEnabled}
               showToast={showToast}
             />
             <ClipboardArea 
