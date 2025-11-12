@@ -27,7 +27,7 @@ self.addEventListener('fetch', (event) => {
         // Fetch and cache static assets dynamically
         return fetch(event.request).then((response) => {
           // Only cache successful GET requests for static assets
-          if (!response || response.status !== 200 || response.type !== 'basic') {
+          if (!response || response.status !== 200 || (response.type !== 'basic' && response.type !== 'cors')) {
             return response;
           }
           
