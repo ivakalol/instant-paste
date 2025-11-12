@@ -4,7 +4,8 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       await navigator.clipboard.writeText(text);
       return true;
     } else {
-      // Fallback for older browsers or non-HTTPS
+      // Fallback for older browsers or non-HTTPS contexts
+      console.warn('Using deprecated clipboard API fallback. Modern Clipboard API is not available. This fallback may not work in future browser versions.');
       const textArea = document.createElement('textarea');
       textArea.value = text;
       textArea.style.position = 'fixed';
@@ -14,9 +15,15 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
       textArea.focus();
       textArea.select();
       // WARNING: document.execCommand('copy') is deprecated and may not work in future browsers.
-      // Consider removing this fallback when support for older browsers is no longer required.
+      // This fallback is only for older browsers or non-HTTPS contexts.
+      // Consider using HTTPS to enable modern Clipboard API support.
       const result = document.execCommand('copy');
       textArea.remove();
+      
+      if (!result) {
+        console.error('Deprecated clipboard fallback failed. Please use HTTPS to enable modern clipboard support.');
+      }
+      
       return result;
     }
   } catch (error) {

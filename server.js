@@ -188,9 +188,10 @@ function handleClipboard(ws, data) {
   }
 
   // Enforce content size limit
-  // For text: 50MB of text
-  // For binary (images/videos): 50MB decoded from base64 (~37.5MB original file becomes ~50MB base64)
-  const MAX_CONTENT_SIZE = 50 * 1024 * 1024; // 50MB
+  // For text: 50MB of actual text content
+  // For binary (images/videos): 50MB decoded size (after base64 decoding)
+  // Note: A 37.5MB original file becomes ~50MB when base64-encoded (33% overhead)
+  const MAX_CONTENT_SIZE = 50 * 1024 * 1024; // 50MB decoded/actual size
   let decodedSize = 0;
   
   if (data.contentType === 'text') {
