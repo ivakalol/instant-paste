@@ -132,8 +132,33 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
+  // Helper to extract MIME type from data URL
+  const getMimeType = (dataUrl: string): string | null => {
+    const match = dataUrl.match(/^data:([^;]+);/);
+    return match ? match[1] : null;
+  };
+
+  // Helper to map MIME type to file extension
+  const getExtension = (mimeType: string | null, fallback: string): string => {
+    const mimeToExt: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'video/webm': 'webm',
+      'video/ogg': 'ogv',
+      // add more mappings as needed
+    };
+    return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
+  };
+
   const handleDownload = (item: ClipboardItem) => {
-    const ext = item.type === 'image' ? 'png' : item.type === 'video' ? 'mp4' : 'txt';
+    let ext = 'txt';
+    if (item.type === 'image' || item.type === 'video') {
+      const mimeType = getMimeType(item.content);
+      ext = getExtension(mimeType, item.type === 'image' ? 'png' : 'mp4');
+    }
     const filename = `paste-${item.id}.${ext}`;
     
     if (item.type === 'text') {
