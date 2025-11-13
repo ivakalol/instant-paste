@@ -101,12 +101,11 @@ function handleJoin(ws, roomId) {
   }
   roomId = roomId.toUpperCase();
   
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, new Set());
-  }
+  // Atomically get or create the room
+  const room = rooms.get(roomId) || (rooms.set(roomId, new Set()), rooms.get(roomId));
 
   ws.roomId = roomId;
-  rooms.get(roomId).add(ws);
+  room.add(ws);
 
   const clientCount = rooms.get(roomId).size;
   
