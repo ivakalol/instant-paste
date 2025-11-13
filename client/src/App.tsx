@@ -46,9 +46,17 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Save history to localStorage
+  // Save history to localStorage (debounced)
   useEffect(() => {
-    localStorage.setItem('clipboardHistory', JSON.stringify(history));
+    const timeoutId = setTimeout(() => {
+      try {
+        localStorage.setItem('clipboardHistory', JSON.stringify(history));
+      } catch (e) {
+        console.error('Failed to save history to localStorage:', e);
+        showToast('Storage quota exceeded. History not saved.', 'error');
+      }
+    }, 1000); // Debounce by 1 second
+    return () => clearTimeout(timeoutId);
   }, [history]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
