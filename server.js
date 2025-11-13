@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname, 'client/build')));
 
 // Helper function to generate a unique room ID using UUID
 function generateRoomId() {
-  // Generate UUID and take first 8 characters in uppercase for readability
+  // Generate UUID and take first 6 characters in uppercase for readability
   // Check for collisions with existing room IDs
   let roomId;
   do {
