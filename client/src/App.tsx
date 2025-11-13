@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import RoomSelector from './components/RoomSelector';
 import RoomInfo from './components/RoomInfo';
 import ClipboardArea from './components/ClipboardArea';
@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [encryptionPassword, setEncryptionPassword] = useState('');
   const [autoCopyEnabled, setAutoCopyEnabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const lastAutoCopyRef = useRef<number>(0);
 
   // Load history from localStorage
   useEffect(() => {
@@ -85,10 +86,10 @@ const App: React.FC = () => {
       // Rate limit: only allow one auto-copy every 2 seconds to prevent clipboard poisoning
       if (autoCopyEnabled && message.contentType === 'text' && navigator.clipboard) {
         const now = Date.now();
-        const lastAutoCopy = (window as any).__lastAutoCopy || 0;
+        const lastAutoCopy = lastAutoCopyRef.current;
         
         if (now - lastAutoCopy > 2000) {
-          (window as any).__lastAutoCopy = now;
+          lastAutoCopyRef.current = now;
           navigator.clipboard.writeText(content)
             .then(() => {
               showToast('Text auto-copied to clipboard', 'success');
