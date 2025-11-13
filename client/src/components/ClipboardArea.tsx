@@ -37,12 +37,16 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     const reader = new FileReader();
     
     reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        showToast('Failed to read file: Invalid result type', 'error');
+        return;
+      }
       if (file.type.startsWith('image/')) {
-        onPaste('image', reader.result as string);
+        onPaste('image', reader.result);
       } else if (file.type.startsWith('video/')) {
-        onPaste('video', reader.result as string);
+        onPaste('video', reader.result);
       } else if (file.type.startsWith('text/')) {
-        onPaste('text', reader.result as string);
+        onPaste('text', reader.result);
       }
     };
     reader.onerror = () => {
