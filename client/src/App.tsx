@@ -57,7 +57,7 @@ const App: React.FC = () => {
       }
     }, 1000); // Debounce by 1 second
     return () => clearTimeout(timeoutId);
-  }, [history]);
+  }, [history, showToast]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
