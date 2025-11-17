@@ -6,14 +6,14 @@ import { useWebSocket } from './utils/useWebSocket';
 import './App.css';
 
 const App: React.FC = () => {
-  const { createRoom, joinRoom } = useWebSocket();
+  const { createRoom, joinRoom, isReady } = useWebSocket();
 
   return (
     <Router>
       <div className="app">
         <div className="container">
           <Routes>
-            <Route path="/" element={<RoomSelector onCreateRoom={createRoom} onJoinRoom={joinRoom} />} />
+            <Route path="/" element={<RoomSelector onCreateRoom={createRoom} onJoinRoom={joinRoom} isReady={isReady} />} />
             <Route path="/:roomId" element={<Room />} />
           </Routes>
         </div>

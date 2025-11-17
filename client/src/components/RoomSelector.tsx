@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 interface RoomSelectorProps {
   onCreateRoom: () => Promise<string | null>;
   onJoinRoom: (roomId: string) => Promise<boolean>;
+  isReady: boolean;
 }
 
-const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom }) => {
+const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, isReady }) => {
   const [roomId, setRoomId] = useState('');
   const navigate = useNavigate();
 
@@ -33,8 +34,8 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom })
       <p className="subtitle">Real-time clipboard sync between devices</p>
       
       <div className="room-options">
-        <button onClick={handleCreate} className="btn btn-primary">
-          Create New Room
+        <button onClick={handleCreate} className="btn btn-primary" disabled={!isReady}>
+          {isReady ? 'Create New Room' : 'Initializing...'}
         </button>
         
         <div className="divider">
@@ -50,7 +51,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom })
             maxLength={6}
             className="room-input"
           />
-          <button type="submit" className="btn btn-secondary" disabled={!roomId.trim()}>
+          <button type="submit" className="btn btn-secondary" disabled={!roomId.trim() || !isReady}>
             Join Room
           </button>
         </form>

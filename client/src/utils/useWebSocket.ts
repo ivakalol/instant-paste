@@ -16,6 +16,7 @@ interface UseWebSocketReturn {
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
   isE2eeEnabled: boolean;
+  isReady: boolean;
 }
 
 interface RoomClient {
@@ -41,6 +42,7 @@ export const useWebSocket = (
   const [keyPair, setKeyPair] = useState<E2eeKeyPair | null>(null);
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
   const [isE2eeEnabled, setIsE2eeEnabled] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   const pendingRoomCreation = useRef<(roomId: string | null) => void>();
   const pendingRoomJoin = useRef<(success: boolean) => void>();
@@ -53,6 +55,7 @@ export const useWebSocket = (
         storeKeyPair(pair);
       }
       setKeyPair(pair);
+      setIsReady(true);
     };
     initKeyPair();
   }, []);
@@ -250,5 +253,6 @@ export const useWebSocket = (
     joinRoom,
     leaveRoom,
     isE2eeEnabled,
+    isReady,
   };
 };
