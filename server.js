@@ -70,8 +70,8 @@ wss.on('connection', (ws) => {
 });
 
 function handleJoin(ws, roomId, publicKey) {
-  if (!roomId || !publicKey) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Room ID and public key are required' }));
+  if (!roomId) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Room ID is required' }));
     return;
   }
 
@@ -106,10 +106,6 @@ function handleJoin(ws, roomId, publicKey) {
 }
 
 function handleCreate(ws, publicKey) {
-  if (!publicKey) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Public key is required' }));
-    return;
-  }
   const roomId = generateRoomId();
   const room = { clients: new Map() };
   rooms.set(roomId, room);

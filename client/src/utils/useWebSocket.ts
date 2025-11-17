@@ -53,16 +53,14 @@ export const useWebSocket = (
         if (!window.isSecureContext) {
           console.warn('Disabling E2EE: running in an insecure context.');
           setIsE2eeEnabled(false);
-          setIsReady(true);
-          return;
+        } else {
+          let pair = getKeyPair();
+          if (!pair) {
+            pair = await generateE2eeKeyPair();
+            storeKeyPair(pair);
+          }
+          setKeyPair(pair);
         }
-
-        let pair = getKeyPair();
-        if (!pair) {
-          pair = await generateE2eeKeyPair();
-          storeKeyPair(pair);
-        }
-        setKeyPair(pair);
       } catch (error) {
         console.error('Failed to initialize key pair, disabling E2EE:', error);
         setIsE2eeEnabled(false);
@@ -233,25 +231,26 @@ export const useWebSocket = (
 
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {
-      if (keyPair) {
-        pendingRoomCreation.current = resolve;
-        ws.current?.send(JSON.stringify({ type: 'create', publicKey: keyPair.publicKey }));
-      } else {
-        resolve(null);
-      }
+      pendingRoomCreation.current = resolve;
+      const message = {
+        type: 'create',
+        ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
+      };
+      ws.current?.send(JSON.stringify(message));
     });
-  }, [keyPair]);
+  }, [keyPair, isE2eeEnabled]);
 
   const joinRoom = useCallback((roomId: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (keyPair) {
-        pendingRoomJoin.current = resolve;
-        ws.current?.send(JSON.stringify({ type: 'join', roomId, publicKey: keyPair.publicKey }));
-      } else {
-        resolve(false);
-      }
+      pendingRoomJoin.current = resolve;
+      const message = {
+        type: 'join',
+        roomId,
+        ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
+      };
+      ws.current?.send(JSON.stringify(message));
     });
-  }, [keyPair]);
+  }, [keyPair, isE2eeEnabled]);
 
   const leaveRoom = useCallback(() => {
     ws.current?.send(JSON.stringify({ type: 'leave' }));
