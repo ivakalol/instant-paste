@@ -152,6 +152,11 @@ const Room: React.FC = () => {
     navigate('/');
   };
 
+  const handleDeleteItem = useCallback((id: string) => {
+    setHistory(prev => prev.filter(item => item.id !== id));
+    showToast('Clip deleted from history', 'info');
+  }, [showToast]);
+
   return (
     <>
       <RoomInfo 
@@ -167,6 +172,7 @@ const Room: React.FC = () => {
         history={history}
         encryptionEnabled={isE2eeEnabled}
         showToast={showToast}
+        onDeleteItem={handleDeleteItem}
       />
       {toast && (
         <Toast

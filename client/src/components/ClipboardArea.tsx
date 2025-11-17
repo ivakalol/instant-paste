@@ -7,13 +7,15 @@ interface ClipboardAreaProps {
   history: ClipboardItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  onDeleteItem: (id: string) => void;
 }
 
-const ClipboardArea: React.FC<ClipboardAreaProps> = ({ 
-  onPaste, 
+const ClipboardArea: React.FC<ClipboardAreaProps> = ({
+  onPaste,
   history,
   encryptionEnabled,
-  showToast
+  showToast,
+  onDeleteItem
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [typedText, setTypedText] = useState('');
@@ -71,7 +73,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       const blob = item.getAsFile();
       if (blob) {
         processFile(blob);
-      }
+      }d
     } else if (item.type.startsWith('video/')) {
       const blob = item.getAsFile();
       if (blob) {
@@ -264,6 +266,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                   <button onClick={() => handleDownload(item)} className="btn-icon" title="Download">
                     💾
                   </button>
+                  <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">
+                    🗑️
+                  </button>
                 </div>
               </div>
             ))
@@ -273,5 +278,4 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     </div>
   );
 };
-
 export default ClipboardArea;
