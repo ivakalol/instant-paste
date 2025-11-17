@@ -30,7 +30,6 @@ export const useWebSocket = (
 ): UseWebSocketReturn => {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onClipboardReceivedRef = useRef(onClipboardReceived);
   const reconnectAttemptRef = useRef<number>(0);
   
@@ -46,6 +45,12 @@ export const useWebSocket = (
 
   const pendingRoomCreation = useRef<(roomId: string | null) => void>();
   const pendingRoomJoin = useRef<(success: boolean) => void>();
+
+  const onMessageRef = useRef((event: MessageEvent) => {});
+
+  useEffect(() => {
+    onClipboardReceivedRef.current = onClipboardReceived;
+  }, [onClipboardReceived]);
 
   useEffect(() => {
     const initKeyPair = async () => {
@@ -72,31 +77,7 @@ export const useWebSocket = (
   }, []);
 
   useEffect(() => {
-    onClipboardReceivedRef.current = onClipboardReceived;
-  }, [onClipboardReceived]);
-
-  const connect = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
-    
-    ws.current = new WebSocket(wsUrl);
-
-    ws.current.onopen = () => {
-      console.log('WebSocket connected');
-      setRoomState(prev => ({ ...prev, connected: true }));
-      reconnectAttemptRef.current = 0;
-      
-      if (initialRoomId && keyPair) {
-        console.log(`Joining room from URL: ${initialRoomId}`);
-        ws.current?.send(JSON.stringify({ 
-          type: 'join', 
-          roomId: initialRoomId,
-          publicKey: keyPair.publicKey 
-        }));
-      }
-    };
-
-    ws.current.onmessage = async (event) => {
+    onMessageRef.current = async (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data);
         
@@ -182,6 +163,30 @@ export const useWebSocket = (
         console.error('Failed to parse WebSocket message:', error);
       }
     };
+  }, [isE2eeEnabled, keyPair, roomClients]);
+
+  const connect = useCallback(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => {
+      console.log('WebSocket connected');
+      setRoomState(prev => ({ ...prev, connected: true }));
+      reconnectAttemptRef.current = 0;
+      
+      if (initialRoomId && keyPair) {
+        console.log(`Joining room from URL: ${initialRoomId}`);
+        ws.current?.send(JSON.stringify({ 
+          type: 'join', 
+          roomId: initialRoomId,
+          publicKey: keyPair.publicKey 
+        }));
+      }
+    };
+
+    ws.current.onmessage = (event) => onMessageRef.current(event);
 
     ws.current.onclose = () => {
       console.log('WebSocket disconnected');
@@ -199,18 +204,17 @@ export const useWebSocket = (
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [initialRoomId, keyPair, isE2eeEnabled, roomClients]);
+  }, [initialRoomId, keyPair]);
 
   useEffect(() => {
-    if (keyPair) {
+    if (isReady) {
       connect();
     }
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
       ws.current?.close();
     };
-  }, [connect, keyPair]);
+  }, [connect, isReady]);
 
   const sendMessage = useCallback(async (message: WebSocketMessage): Promise<boolean> => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
