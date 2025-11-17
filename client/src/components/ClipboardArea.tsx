@@ -216,7 +216,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        rows={6}
+        rows={10}
         style={{ resize: 'vertical' }}
       />
       
@@ -263,7 +263,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
                       {item.content.length > 100 && (
                         <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
-                          {expandedItems.has(item.id) ? 'Collapse' : 'Expand'}
+                          {expandedItems.has(item.id) ? '➖ Collapse' : '➕ Expand'}
                         </button>
                       )}
                     </div>
