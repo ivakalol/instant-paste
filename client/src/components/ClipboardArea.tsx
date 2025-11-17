@@ -21,6 +21,19 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const [typedText, setTypedText] = useState('');
   const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, []);
 
   // Helper function to read and process files
   const processFile = useCallback((file: File) => {
@@ -203,7 +216,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        rows={3}
+        rows={6}
         style={{ resize: 'vertical' }}
       />
       
@@ -247,8 +260,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                 <div className="item-content">
                   {item.type === 'text' && (
                     <div className="text-preview">
-                      {item.content.substring(0, 100)}
-                      {item.content.length > 100 && '...'}
+                      {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
+                      {item.content.length > 100 && (
+                        <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
+                          {expandedItems.has(item.id) ? 'Collapse' : 'Expand'}
+                        </button>
+                      )}
                     </div>
                   )}
                   {item.type === 'image' && (
@@ -278,4 +295,3 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     </div>
   );
 };
-export default ClipboardArea;
