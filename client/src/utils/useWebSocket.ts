@@ -266,7 +266,7 @@ export const useWebSocket = (
 
   const leaveRoom = useCallback(() => {
     ws.current?.send(JSON.stringify({ type: 'leave' }));
-    setRoomState({ roomId: null, connected: true, clientCount: 0 });
+    setRoomState({ roomId: null, connected: true, clientCount: 0, clientId: null });
     setRoomClients({});
   }, []);
 
