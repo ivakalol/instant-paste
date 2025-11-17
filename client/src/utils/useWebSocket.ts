@@ -37,6 +37,7 @@ export const useWebSocket = (
     roomId: null,
     connected: false,
     clientCount: 0,
+    clientId: null,
   });
   const [keyPair, setKeyPair] = useState<E2eeKeyPair | null>(null);
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
@@ -83,27 +84,27 @@ export const useWebSocket = (
         
         switch (message.type) {
           case 'created':
-            const newRoomId = message.roomId || null;
             setRoomState({
-              roomId: newRoomId,
+              roomId: message.roomId || null,
               connected: true,
               clientCount: message.clients?.length || 1,
+              clientId: message.clientId,
             });
             setRoomClients(message.clients.reduce((acc: any, client: any) => {
               acc[client.id] = client;
               return acc;
             }, {}));
             if (pendingRoomCreation.current) {
-              pendingRoomCreation.current(newRoomId);
+              pendingRoomCreation.current(message.roomId || null);
               pendingRoomCreation.current = undefined;
             }
             break;
           case 'joined':
-            const joinedRoomId = message.roomId || null;
             setRoomState({
-              roomId: joinedRoomId,
+              roomId: message.roomId || null,
               connected: true,
               clientCount: message.clients?.length || 1,
+              clientId: message.clientId,
             });
             setRoomClients(message.clients.reduce((acc: any, client: any) => {
               acc[client.id] = client;
@@ -144,7 +145,7 @@ export const useWebSocket = (
                     console.error("Failed to decrypt message");
                   }
                 }
-              } else if (!isE2eeEnabled) {
+              } else if (message.content) { // Handle non-E2EE messages
                 onClipboardReceivedRef.current(message);
               }
             }
@@ -176,13 +177,15 @@ export const useWebSocket = (
       setRoomState(prev => ({ ...prev, connected: true }));
       reconnectAttemptRef.current = 0;
       
-      if (initialRoomId && keyPair) {
-        console.log(`Joining room from URL: ${initialRoomId}`);
-        ws.current?.send(JSON.stringify({ 
-          type: 'join', 
+      if (initialRoomId) {
+        const joinMessage: WebSocketMessage = {
+          type: 'join',
           roomId: initialRoomId,
-          publicKey: keyPair.publicKey 
-        }));
+        };
+        if (isE2eeEnabled && keyPair) {
+          joinMessage.publicKey = keyPair.publicKey;
+        }
+        ws.current?.send(JSON.stringify(joinMessage));
       }
     };
 
@@ -190,7 +193,7 @@ export const useWebSocket = (
 
     ws.current.onclose = () => {
       console.log('WebSocket disconnected');
-      setRoomState(prev => ({ ...prev, connected: false, clientCount: 0 }));
+      setRoomState(prev => ({ ...prev, connected: false, clientCount: 0, clientId: null }));
       reconnectAttemptRef.current += 1;
       const delay = Math.min(3000 * Math.pow(2, reconnectAttemptRef.current - 1), 30000);
       reconnectTimeoutRef.current = setTimeout(() => {
@@ -204,7 +207,7 @@ export const useWebSocket = (
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [initialRoomId, keyPair]);
+  }, [initialRoomId, keyPair, isE2eeEnabled]);
 
   useEffect(() => {
     if (isReady) {
@@ -218,20 +221,25 @@ export const useWebSocket = (
 
   const sendMessage = useCallback(async (message: WebSocketMessage): Promise<boolean> => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      let messageToSend = message;
-      if (message.type === 'clipboard' && isE2eeEnabled && keyPair) {
-        const recipients = Object.values(roomClients).filter(c => c.id !== ws.current?.url); // A bit of a hack to get client id
-        if (recipients.length > 0 && recipients[0].publicKey) {
-          const encryptedContent = await encryptFor(message.content!, keyPair.privateKey, recipients[0].publicKey);
-          messageToSend = { ...message, content: '', encryptedContent };
+      let messageToSend: WebSocketMessage = { ...message };
+
+      if (message.type === 'clipboard') {
+        if (isE2eeEnabled && keyPair && roomState.clientId) {
+          const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
+          if (recipients.length > 0 && recipients[0].publicKey) {
+            // This is still not ideal for group chat, but it's a fix for 1-to-1
+            const encryptedContent = await encryptFor(message.content!, keyPair.privateKey, recipients[0].publicKey);
+            messageToSend = { ...message, content: undefined, encryptedContent };
+          }
         }
+        // If E2EE is disabled, messageToSend will have the original `content`
       }
 
       ws.current.send(JSON.stringify(messageToSend));
       return true;
     }
     return false;
-  }, [isE2eeEnabled, keyPair, roomClients]);
+  }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
 
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {

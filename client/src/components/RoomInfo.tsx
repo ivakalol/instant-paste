@@ -60,10 +60,13 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           </div>
         </div>
 
-        <div className="encryption-section">
-          <span className="encryption-status">
-            🔐 {encryptionEnabled ? 'E2E Encrypted' : 'Encryption Disabled'}
-          </span>
+        <div className="encryption-controls">
+          <button 
+            className="btn btn-small"
+            disabled
+          >
+            🔐 {encryptionEnabled ? 'E2E Encrypted' : 'E2EE Disabled'}
+          </button>
           
           <button 
             onClick={() => onToggleAutoCopy(!autoCopyEnabled)}

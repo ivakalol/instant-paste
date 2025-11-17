@@ -29,7 +29,7 @@ const Room: React.FC = () => {
   const handleToggleAutoCopy = async (enabled: boolean) => {
     if (enabled) {
       if (!navigator.clipboard || !window.isSecureContext) {
-        showToast('Auto-copy is not supported in this browser or context.', 'error');
+        showToast('Auto-copy requires a secure context (HTTPS).', 'error');
         return;
       }
       try {

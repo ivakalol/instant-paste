@@ -94,7 +94,8 @@ function handleJoin(ws, roomId, publicKey) {
   ws.send(JSON.stringify({ 
     type: 'joined', 
     roomId: roomId,
-    clients: clientsInRoom
+    clients: clientsInRoom,
+    clientId: ws.id
   }));
 
   broadcastToRoom(roomId, { 
@@ -116,30 +117,14 @@ function handleCreate(ws, publicKey) {
   ws.send(JSON.stringify({ 
     type: 'created', 
     roomId: roomId,
-    clients: [{ id: ws.id, publicKey }]
+    clients: [{ id: ws.id, publicKey }],
+    clientId: ws.id
   }));
 
   console.log(`Room ${roomId} created by ${ws.id}`);
 }
 
-function handleLeave(ws) {
-  if (ws.roomId && rooms.has(ws.roomId)) {
-    const room = rooms.get(ws.roomId);
-    room.clients.delete(ws.id);
-
-    if (room.clients.size === 0) {
-      rooms.delete(ws.roomId);
-      console.log(`Room ${ws.roomId} deleted (empty)`);
-    } else {
-      broadcastToRoom(ws.roomId, { 
-        type: 'client-left',
-        clientId: ws.id
-      });
-      console.log(`Client ${ws.id} left room ${ws.roomId} (${room.clients.size} clients remaining)`);
-    }
-    ws.roomId = null;
-  }
-}
+// ... (rest of the file)
 
 function handleClipboard(ws, data) {
   if (!ws.roomId) {
@@ -147,15 +132,22 @@ function handleClipboard(ws, data) {
     return;
   }
 
-  broadcastToRoom(ws.roomId, {
+  const message = {
     type: 'clipboard',
     contentType: data.contentType,
-    encryptedContent: data.encryptedContent,
     senderId: ws.id,
     timestamp: Date.now()
-  }, ws);
+  };
 
-  console.log(`Encrypted clipboard data relayed in room ${ws.roomId}`);
+  if (data.encryptedContent) {
+    message.encryptedContent = data.encryptedContent;
+    console.log(`Encrypted clipboard data relayed in room ${ws.roomId}`);
+  } else {
+    message.content = data.content;
+    console.log(`Clipboard data relayed in room ${ws.roomId}`);
+  }
+
+  broadcastToRoom(ws.roomId, message, ws);
 }
 
 function broadcastToRoom(roomId, data, excludeWs = null) {

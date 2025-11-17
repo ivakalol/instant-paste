@@ -16,10 +16,13 @@ export interface WebSocketMessage {
   message?: string;
   clients?: any;
   timestamp?: number;
+  clientId?: string;
+  publicKey?: JsonWebKey;
 }
 
 export interface RoomState {
   roomId: string | null;
   connected: boolean;
   clientCount: number;
+  clientId: string | null;
 }
