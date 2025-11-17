@@ -46,6 +46,10 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+  }, []);
+
   // Save history to localStorage (debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -58,10 +62,6 @@ const App: React.FC = () => {
     }, 1000); // Debounce by 1 second
     return () => clearTimeout(timeoutId);
   }, [history, showToast]);
-
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToast({ message, type });
-  }, []);
 
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
     if (message.type === 'clipboard' && message.contentType && message.content) {
