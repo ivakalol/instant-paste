@@ -41,7 +41,7 @@ export const useWebSocket = (
   });
   const [keyPair, setKeyPair] = useState<E2eeKeyPair | null>(null);
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
-  const [isE2eeEnabled, setIsE2eeEnabled] = useState(true);
+  const [isE2eeEnabled, setIsE2eeEnabled] = useState(window.isSecureContext);
   const [isReady, setIsReady] = useState(false);
 
   const pendingRoomCreation = useRef<(roomId: string | null) => void>();
@@ -55,10 +55,11 @@ export const useWebSocket = (
 
   useEffect(() => {
     const initKeyPair = async () => {
+      let e2eeEnabled = window.isSecureContext;
       try {
         if (!window.isSecureContext) {
           console.warn('Disabling E2EE: running in an insecure context.');
-          setIsE2eeEnabled(false);
+          e2eeEnabled = false;
         } else {
           let pair = getKeyPair();
           if (!pair) {
@@ -69,8 +70,9 @@ export const useWebSocket = (
         }
       } catch (error) {
         console.error('Failed to initialize key pair, disabling E2EE:', error);
-        setIsE2eeEnabled(false);
+        e2eeEnabled = false;
       } finally {
+        setIsE2eeEnabled(e2eeEnabled);
         setIsReady(true);
       }
     };

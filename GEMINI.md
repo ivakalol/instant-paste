@@ -68,12 +68,21 @@ This session involved initial setup, major feature implementation, and subsequen
 *   **End-to-End Encryption (E2EE):** Replaced the password-based encryption with a more secure E2EE implementation using the `window.crypto.subtle` API. The server now only relays encrypted data.
 *   **Auto-Copy Feature Improvements:** Improved the auto-copy feature by adding permission checks and a clearer UI status indicator.
 
-### 3. Post-Implementation Debugging
-*   **`qrcode.react` Import Errors:** Diagnosed and resolved a series of compilation errors related to the `qrcode.react` library import, which were specific to the user's build environment. The final solution involved using the more specific `QRCodeCanvas` component.
-*   **TypeScript Type Errors:**
-    *   Fixed an error where the `WebSocketMessage` type was missing properties required for E2EE (`encryptedContent`, `senderId`).
-    *   Corrected the type definition for the `sendMessage` function, which had become asynchronous, to return a `Promise<boolean>`.
-*   **Build Success:** After the fixes, the project was confirmed to build successfully, with only minor ESLint warnings remaining.
+### 3. Post-Implementation Debugging and Resolution
+*   **Compilation Errors:**
+    *   Resolved `qrcode.react` import errors by using the specific `QRCodeCanvas` component.
+    *   Fixed TypeScript type errors related to `WebSocketMessage` properties (`encryptedContent`, `senderId`) and the `sendMessage` function's return type (`Promise<boolean>`).
+    *   Corrected a missing `clientId` in the `leaveRoom` state update.
+*   **Functional Issues:**
+    *   Restored missing homepage CSS.
+    *   Fixed unresponsive "Create New Room" and "Join Room" buttons by ensuring `isReady` state is correctly set even in insecure contexts, and conditionally sending `publicKey` in room creation/joining requests.
+    *   Resolved issues with room code display, QR code functionality, Copy ID button, and client count by correctly handling client ID and room state updates in `useWebSocket.ts` and `server.js`.
+    *   Fixed messages not being received by correctly handling both encrypted and unencrypted content in `sendMessage` and `handleClipboard` on both client and server.
+    *   Resolved a `ReferenceError: handleLeave is not defined` by re-adding the missing function to `server.js`.
+*   **UI/UX Improvements:**
+    *   Improved spacing and styling for the "Encryption Disabled" status, converting it into a disabled button.
+    *   Updated the auto-copy toast message to be more accurate ("Auto-copy requires a secure context (HTTPS).").
+*   **Build Status:** The project now builds successfully with only minor ESLint warnings.
 
 ### 4. Git Commits
-*   All new features and subsequent fixes were committed to the local git repository with detailed, conventional commit messages.
+*   All new features, fixes, and improvements were committed to the local git repository with detailed, conventional commit messages.
