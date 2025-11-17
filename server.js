@@ -124,7 +124,24 @@ function handleCreate(ws, publicKey) {
   console.log(`Room ${roomId} created by ${ws.id}`);
 }
 
-// ... (rest of the file)
+function handleLeave(ws) {
+  if (ws.roomId && rooms.has(ws.roomId)) {
+    const room = rooms.get(ws.roomId);
+    room.clients.delete(ws.id);
+
+    if (room.clients.size === 0) {
+      rooms.delete(ws.roomId);
+      console.log(`Room ${ws.roomId} deleted (empty)`);
+    } else {
+      broadcastToRoom(ws.roomId, { 
+        type: 'client-left',
+        clientId: ws.id
+      });
+      console.log(`Client ${ws.id} left room ${ws.roomId} (${room.clients.size} clients remaining)`);
+    }
+    ws.roomId = null;
+  }
+}
 
 function handleClipboard(ws, data) {
   if (!ws.roomId) {
