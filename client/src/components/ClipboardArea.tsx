@@ -296,5 +296,4 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   );
 };
 
-export { ClipboardArea };
 export default ClipboardArea;

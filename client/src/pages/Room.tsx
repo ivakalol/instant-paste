@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import RoomInfo from '../components/RoomInfo';
-import { ClipboardArea } from '../components/ClipboardArea';
+import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
 import { ClipboardItem, WebSocketMessage } from '../types';
