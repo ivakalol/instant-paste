@@ -1,17 +1,29 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface RoomSelectorProps {
-  onCreateRoom: () => void;
-  onJoinRoom: (roomId: string) => void;
+  onCreateRoom: () => Promise<string | null>;
+  onJoinRoom: (roomId: string) => Promise<boolean>;
 }
 
 const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom }) => {
   const [roomId, setRoomId] = useState('');
+  const navigate = useNavigate();
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleCreate = async () => {
+    const newRoomId = await onCreateRoom();
+    if (newRoomId) {
+      navigate(`/${newRoomId}`);
+    }
+  };
+
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (roomId.trim()) {
-      onJoinRoom(roomId.trim().toUpperCase());
+      const success = await onJoinRoom(roomId.trim().toUpperCase());
+      if (success) {
+        navigate(`/${roomId.trim().toUpperCase()}`);
+      }
     }
   };
 
@@ -21,7 +33,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom })
       <p className="subtitle">Real-time clipboard sync between devices</p>
       
       <div className="room-options">
-        <button onClick={onCreateRoom} className="btn btn-primary">
+        <button onClick={handleCreate} className="btn btn-primary">
           Create New Room
         </button>
         

@@ -11,18 +11,13 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
-// Store rooms and their clients
 const rooms = new Map();
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-// Helper function to generate a unique room ID using UUID
 function generateRoomId() {
-  // Generate UUID and take first 6 characters in uppercase for readability
-  // Check for collisions with existing room IDs
   let roomId;
   do {
     const uuid = crypto.randomUUID();
@@ -31,9 +26,9 @@ function generateRoomId() {
   return roomId;
 }
 
-// WebSocket connection handler
 wss.on('connection', (ws) => {
-  console.log('New client connected');
+  ws.id = crypto.randomUUID();
+  console.log(`New client connected: ${ws.id}`);
   
   ws.isAlive = true;
   ws.on('pong', () => {
@@ -42,32 +37,19 @@ wss.on('connection', (ws) => {
 
   ws.on('message', (message) => {
     try {
-      // Try to parse as JSON first (text message)
-      let data;
-      try {
-        const messageStr = message.toString();
-        data = JSON.parse(messageStr);
-      } catch (parseError) {
-        // If parsing fails, treat as binary data
-        data = { type: 'binary', data: message };
-      }
-
-      // Handle different message types
+      const data = JSON.parse(message.toString());
       switch (data.type) {
         case 'join':
-          handleJoin(ws, data.roomId);
+          handleJoin(ws, data.roomId, data.publicKey);
           break;
         case 'create':
-          handleCreate(ws);
+          handleCreate(ws, data.publicKey);
           break;
         case 'leave':
           handleLeave(ws);
           break;
         case 'clipboard':
           handleClipboard(ws, data);
-          break;
-        case 'binary':
-          handleBinary(ws, data.data);
           break;
         default:
           console.log('Unknown message type:', data.type);
@@ -78,7 +60,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('Client disconnected');
+    console.log(`Client disconnected: ${ws.id}`);
     handleLeave(ws);
   });
 
@@ -87,186 +69,112 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Handle joining a room
-function handleJoin(ws, roomId) {
-  if (!roomId) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Room ID is required' }));
+function handleJoin(ws, roomId, publicKey) {
+  if (!roomId || !publicKey) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Room ID and public key are required' }));
     return;
   }
 
-  // Validate room ID: exactly 6 alphanumeric characters
   if (typeof roomId !== 'string' || !/^[A-Za-z0-9]{6}$/.test(roomId)) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Invalid room ID format. Room ID must be exactly 6 alphanumeric characters.' }));
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid room ID format.' }));
     return;
   }
   roomId = roomId.toUpperCase();
   
-  // Atomically get or create the room
-  const room = rooms.get(roomId) || (rooms.set(roomId, new Set()), rooms.get(roomId));
+  const room = rooms.get(roomId) || { clients: new Map() };
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, room);
+  }
 
   ws.roomId = roomId;
-  room.add(ws);
+  room.clients.set(ws.id, { ws, publicKey });
 
-  const clientCount = rooms.get(roomId).size;
+  const clientsInRoom = Array.from(room.clients.values()).map(c => ({ id: c.ws.id, publicKey: c.publicKey }));
   
   ws.send(JSON.stringify({ 
     type: 'joined', 
     roomId: roomId,
-    clients: clientCount
+    clients: clientsInRoom
   }));
 
-  // Notify other clients in the room
   broadcastToRoom(roomId, { 
     type: 'client-joined',
-    clients: clientCount
+    client: { id: ws.id, publicKey }
   }, ws);
 
-  console.log(`Client joined room ${roomId} (${clientCount} clients)`);
+  console.log(`Client ${ws.id} joined room ${roomId} (${room.clients.size} clients)`);
 }
 
-// Handle creating a new room
-function handleCreate(ws) {
-  // Generate collision-free room ID using UUID
+function handleCreate(ws, publicKey) {
+  if (!publicKey) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Public key is required' }));
+    return;
+  }
   const roomId = generateRoomId();
+  const room = { clients: new Map() };
+  rooms.set(roomId, room);
 
-  rooms.set(roomId, new Set());
   ws.roomId = roomId;
-  rooms.get(roomId).add(ws);
+  room.clients.set(ws.id, { ws, publicKey });
 
   ws.send(JSON.stringify({ 
     type: 'created', 
     roomId: roomId,
-    clients: 1
+    clients: [{ id: ws.id, publicKey }]
   }));
 
-  console.log(`Room ${roomId} created`);
+  console.log(`Room ${roomId} created by ${ws.id}`);
 }
 
-// Handle leaving a room
 function handleLeave(ws) {
   if (ws.roomId && rooms.has(ws.roomId)) {
     const room = rooms.get(ws.roomId);
-    room.delete(ws);
+    room.clients.delete(ws.id);
 
-    const clientCount = room.size;
-
-    if (clientCount === 0) {
+    if (room.clients.size === 0) {
       rooms.delete(ws.roomId);
       console.log(`Room ${ws.roomId} deleted (empty)`);
     } else {
-      // Notify remaining clients
       broadcastToRoom(ws.roomId, { 
         type: 'client-left',
-        clients: clientCount
+        clientId: ws.id
       });
-      console.log(`Client left room ${ws.roomId} (${clientCount} clients remaining)`);
+      console.log(`Client ${ws.id} left room ${ws.roomId} (${room.clients.size} clients remaining)`);
     }
-
     ws.roomId = null;
   }
 }
 
-// Handle clipboard data
 function handleClipboard(ws, data) {
   if (!ws.roomId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Not in a room' }));
     return;
   }
 
-  // Validate contentType
-  const validContentTypes = ['text', 'image', 'video'];
-  if (!data.contentType || !validContentTypes.includes(data.contentType)) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Invalid content type' }));
-    return;
-  }
-
-  // Validate content exists and size
-  if (!data.content || typeof data.content !== 'string') {
-    ws.send(JSON.stringify({ type: 'error', message: 'Invalid content' }));
-    return;
-  }
-
-  // Enforce content size limit
-  // For text: 50MB of actual text content
-  // For binary (images/videos): 50MB decoded size (after base64 decoding)
-  // Note: A 37.5MB original file becomes ~50MB when base64-encoded (33% overhead)
-  const MAX_CONTENT_SIZE = 50 * 1024 * 1024; // 50MB decoded/actual size
-  let decodedSize = 0;
-  
-  if (data.contentType === 'text') {
-    // For text, measure string byte length directly
-    decodedSize = Buffer.byteLength(data.content, 'utf8');
-  } else {
-    // For images/videos, decode base64 to get actual size
-    try {
-      decodedSize = Buffer.from(data.content, 'base64').length;
-    } catch (e) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Invalid base64 content' }));
-      return;
-    }
-  }
-  
-  if (decodedSize > MAX_CONTENT_SIZE) {
-    ws.send(JSON.stringify({ type: 'error', message: 'Content too large. Maximum size is 50MB' }));
-    return;
-  }
-
-  // Broadcast clipboard data to all other clients in the room
   broadcastToRoom(ws.roomId, {
     type: 'clipboard',
     contentType: data.contentType,
-    content: data.content,
+    encryptedContent: data.encryptedContent,
+    senderId: ws.id,
     timestamp: Date.now()
   }, ws);
 
-  console.log(`Clipboard data relayed in room ${ws.roomId} (${data.contentType})`);
+  console.log(`Encrypted clipboard data relayed in room ${ws.roomId}`);
 }
 
-// Handle binary data (images/videos)
-function handleBinary(ws, binaryData) {
-  if (!ws.roomId) {
-    return;
-  }
-
-  // Relay binary data to all other clients in the room
-  const room = rooms.get(ws.roomId);
-  if (room) {
-    room.forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(binaryData);
-      }
-    });
-  }
-}
-
-// Broadcast message to all clients in a room
 function broadcastToRoom(roomId, data, excludeWs = null) {
   const room = rooms.get(roomId);
   if (!room) return;
 
   const message = JSON.stringify(data);
   
-  // Use batched setImmediate to prevent blocking event loop with large broadcasts
-  const BATCH_SIZE = 50; // Tune this value as needed
-  const clients = Array.from(room);
-  let index = 0;
-  function processBatch() {
-    const end = Math.min(index + BATCH_SIZE, clients.length);
-    for (let i = index; i < end; i++) {
-      const client = clients[i];
-      if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+  room.clients.forEach(({ ws: client }) => {
+    if (client !== excludeWs && client.readyState === WebSocket.OPEN) {
+      client.send(message);
     }
-    index = end;
-    if (index < clients.length) {
-      setImmediate(processBatch);
-    }
-  }
-  setImmediate(processBatch);
+  });
 }
 
-// Heartbeat to keep connections alive
 const interval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
@@ -283,18 +191,15 @@ wss.on('close', () => {
   clearInterval(interval);
 });
 
-// Serve React app for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
 
-// Start server
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access at: http://localhost:${PORT}`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, closing server...');
   server.close(() => {
