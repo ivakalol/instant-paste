@@ -11,8 +11,10 @@ export interface WebSocketMessage {
   roomId?: string;
   contentType?: string;
   content?: string;
+  encryptedContent?: string;
+  senderId?: string;
   message?: string;
-  clients?: number;
+  clients?: any;
   timestamp?: number;
 }
 
