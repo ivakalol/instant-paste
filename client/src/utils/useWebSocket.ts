@@ -11,7 +11,7 @@ import {
 
 interface UseWebSocketReturn {
   roomState: RoomState;
-  sendMessage: (message: WebSocketMessage) => boolean;
+  sendMessage: (message: WebSocketMessage) => Promise<boolean>;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -245,7 +245,7 @@ export const useWebSocket = (
 
   return {
     roomState,
-    sendMessage: sendMessage as (message: WebSocketMessage) => boolean, // Adjusting type because of async
+    sendMessage,
     createRoom,
     joinRoom,
     leaveRoom,

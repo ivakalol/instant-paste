@@ -122,7 +122,7 @@ const Room: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast]);
 
-  const handlePaste = useCallback((type: string, content: string) => {
+  const handlePaste = useCallback(async (type: string, content: string) => {
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
       type: type as 'text' | 'image' | 'video',
@@ -136,12 +136,16 @@ const Room: React.FC = () => {
       return updated;
     });
 
-    sendMessage({
+    const sent = await sendMessage({
       type: 'clipboard',
       contentType: type,
       content: content,
     });
-  }, [sendMessage]);
+
+    if (!sent) {
+      showToast('Failed to send content. WebSocket not connected.', 'error');
+    }
+  }, [sendMessage, showToast]);
 
   const handleLeaveRoom = () => {
     leaveRoom();
