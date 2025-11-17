@@ -73,7 +73,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       const blob = item.getAsFile();
       if (blob) {
         processFile(blob);
-      }d
+      }
     } else if (item.type.startsWith('video/')) {
       const blob = item.getAsFile();
       if (blob) {
