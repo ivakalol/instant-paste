@@ -49,13 +49,26 @@ export const useWebSocket = (
 
   useEffect(() => {
     const initKeyPair = async () => {
-      let pair = getKeyPair();
-      if (!pair) {
-        pair = await generateE2eeKeyPair();
-        storeKeyPair(pair);
+      try {
+        if (!window.isSecureContext) {
+          console.warn('Disabling E2EE: running in an insecure context.');
+          setIsE2eeEnabled(false);
+          setIsReady(true);
+          return;
+        }
+
+        let pair = getKeyPair();
+        if (!pair) {
+          pair = await generateE2eeKeyPair();
+          storeKeyPair(pair);
+        }
+        setKeyPair(pair);
+      } catch (error) {
+        console.error('Failed to initialize key pair, disabling E2EE:', error);
+        setIsE2eeEnabled(false);
+      } finally {
+        setIsReady(true);
       }
-      setKeyPair(pair);
-      setIsReady(true);
     };
     initKeyPair();
   }, []);
