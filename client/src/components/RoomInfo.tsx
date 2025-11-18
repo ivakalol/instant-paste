@@ -14,7 +14,7 @@ interface RoomInfoProps {
   onClearAll: () => void;
 }
 
-const RoomInfo: React.FC<RoomInfoProps> = ({
+export default RoomInfo;
   roomState,
   onLeave,
   encryptionEnabled,
