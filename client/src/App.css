@@ -225,6 +225,24 @@ body {
 .client-count {
   color: #666;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.connection-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ccc; /* Default color */
+}
+
+.connection-status.connected {
+  background-color: #4CAF50; /* Green */
+}
+
+.connection-status.disconnected {
+  background-color: #f44336; /* Red */
 }
 
 .room-actions {
@@ -369,6 +387,19 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.copied-flash {
+  animation: flash 1s ease-out;
+}
+
+@keyframes flash {
+  0% {
+    background-color: #e0e7ff;
+  }
+  100% {
+    background-color: #fafafa;
+  }
+}
+
 .item-content {
   flex: 1;
   overflow: hidden;
@@ -389,9 +420,15 @@ body {
 
 .item-actions {
   display: flex;
-  gap: 10px;
+  gap: 15px;
   align-items: center;
 }
+
+.item-timestamp {
+  font-size: 0.8rem;
+  color: #999;
+}
+
 
 .item-type {
   background: #667eea;
@@ -455,6 +492,17 @@ body {
 
   .room-input {
     width: 100%;
+  }
+
+  .history-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .item-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .media-preview {

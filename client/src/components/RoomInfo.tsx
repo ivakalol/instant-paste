@@ -44,6 +44,7 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           <div className="room-details">
             <h2>Room: {roomState.roomId}</h2>
             <p className="client-count">
+              <span className={`connection-status ${roomState.connected ? 'connected' : 'disconnected'}`}></span>
               {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'} connected
             </p>
           </div>

@@ -22,6 +22,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => {
@@ -141,6 +142,8 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       const success = await copyToClipboard(item.content);
       if (success) {
         showToast('Copied to clipboard!', 'success');
+        setCopiedItemId(item.id);
+        setTimeout(() => setCopiedItemId(null), 1000);
       } else {
         showToast('Failed to copy to clipboard', 'error');
       }
@@ -256,7 +259,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
             <p className="empty-state">No clips yet. Start pasting!</p>
           ) : (
             history.map((item) => (
-              <div key={item.id} className="history-item">
+              <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
                 <div className="item-content">
                   {item.type === 'text' && (
                     <div className="text-preview">
@@ -277,6 +280,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                 </div>
                 <div className="item-actions">
                   <span className="item-type">{item.type}</span>
+                  <span className="item-timestamp">
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </span>
                   <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">
                     📋
                   </button>
