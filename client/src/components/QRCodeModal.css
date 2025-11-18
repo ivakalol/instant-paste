@@ -12,7 +12,7 @@
 }
 
 .modal-content {
-  background-color: #fff;
+  background-color: var(--card-background);
   padding: 2rem;
   border-radius: 8px;
   text-align: center;
@@ -23,13 +23,13 @@
 
 .modal-content h2 {
   margin-top: 0;
-  color: #333;
+  color: var(--text-color);
 }
 
 .qrcode-container {
   margin: 1.5rem 0;
   padding: 1rem;
-  background-color: #f7f7f7;
+  background-color: var(--qr-code-bg);
   border-radius: 8px;
   display: inline-block;
 }
@@ -38,7 +38,8 @@
   word-break: break-all;
   margin-bottom: 1.5rem;
   font-family: monospace;
-  background: #eee;
+  background: var(--input-background);
+  color: var(--text-color);
   padding: 0.5rem;
   border-radius: 4px;
 }

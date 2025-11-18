@@ -1,3 +1,41 @@
+:root {
+  --background-color: #f0f2f5;
+  --text-color: #333;
+  --primary-color: #007bff;
+  --secondary-color: #6c757d;
+  --border-color: #dee2e6;
+  --card-background: #fff;
+  --input-background: #fff;
+  --input-border: #ced4da;
+  --button-hover-bg: #0056b3;
+  --button-danger-bg: #dc3545;
+  --button-danger-hover-bg: #c82333;
+  --toast-success-bg: #28a745;
+  --toast-error-bg: #dc3545;
+  --toast-info-bg: #17a2b8;
+  --qr-code-bg: #fff;
+  --qr-code-fg: #000;
+}
+
+body.dark-mode {
+  --background-color: #282c34;
+  --text-color: #f8f8f2;
+  --primary-color: #61dafb;
+  --secondary-color: #999;
+  --border-color: #444;
+  --card-background: #3a3f4a;
+  --input-background: #4a4f5a;
+  --input-border: #555;
+  --button-hover-bg: #4fa3d1;
+  --button-danger-bg: #e06c75;
+  --button-danger-hover-bg: #d15c66;
+  --toast-success-bg: #5cb85c;
+  --toast-error-bg: #d9534f;
+  --toast-info-bg: #5bc0de;
+  --qr-code-bg: #282c34;
+  --qr-code-fg: #f8f8f2;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -5,6 +43,9 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 code {

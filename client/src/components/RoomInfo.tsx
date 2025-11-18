@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { RoomState } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCodeModal from './QRCodeModal';
+import { useTheme } from '../App'; // Import useTheme
 
 interface RoomInfoProps {
   roomState: RoomState;
@@ -23,6 +24,7 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   onClearAll
 }) => {
   const [showQrCode, setShowQrCode] = useState(false);
+  const { isDarkMode, toggleTheme } = useTheme(); // Use the theme hook
 
   const copyRoomId = async () => {
     if (roomState.roomId) {
@@ -80,6 +82,9 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           </button>
           <button onClick={onClearAll} className="btn btn-small btn-danger" title="Delete all clips from history">
             🗑️ Clear All
+          </button>
+          <button onClick={toggleTheme} className="btn btn-small" title="Toggle Dark Mode">
+            {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
           </button>
         </div>
       </div>
