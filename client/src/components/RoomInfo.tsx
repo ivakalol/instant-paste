@@ -10,6 +10,7 @@ interface RoomInfoProps {
   autoCopyEnabled: boolean;
   onToggleAutoCopy: (enabled: boolean) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  onClearAll: () => void;
 }
 
 const RoomInfo: React.FC<RoomInfoProps> = ({ 
@@ -18,7 +19,8 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   encryptionEnabled,
   autoCopyEnabled,
   onToggleAutoCopy,
-  showToast
+  showToast,
+  onClearAll
 }) => {
   const [showQrCode, setShowQrCode] = useState(false);
 
@@ -75,6 +77,9 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
             title="Auto-copy received text to clipboard"
           >
             {autoCopyEnabled ? '[ON] Auto-Copy' : '[OFF] Auto-Copy'}
+          </button>
+          <button onClick={onClearAll} className="btn btn-small btn-danger" title="Delete all clips from history">
+            🗑️ Clear All
           </button>
         </div>
       </div>

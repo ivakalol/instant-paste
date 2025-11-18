@@ -149,6 +149,16 @@ const Room: React.FC = () => {
   }, [roomId]);
 
   useEffect(() => {
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const thirtyMinutes = 30 * 60 * 1000;
+      setHistory(prev => prev.filter(item => now - item.timestamp < thirtyMinutes));
+    }, 60 * 1000); // Run every minute
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     const timeoutId = setTimeout(() => {
       try {
         localStorage.setItem(`clipboardHistory_${roomId}`, JSON.stringify(history));
@@ -195,6 +205,14 @@ const Room: React.FC = () => {
     showToast('Clip deleted from history', 'info');
   }, [showToast]);
 
+  const handleClearAll = useCallback(() => {
+    setHistory([]);
+    if (roomId) {
+      localStorage.removeItem(`clipboardHistory_${roomId}`);
+    }
+    showToast('All clips have been deleted from history', 'info');
+  }, [roomId, showToast]);
+
   return (
     <>
       <RoomInfo 
@@ -204,6 +222,7 @@ const Room: React.FC = () => {
         autoCopyEnabled={autoCopyEnabled}
         onToggleAutoCopy={handleToggleAutoCopy}
         showToast={showToast}
+        onClearAll={handleClearAll}
       />
       <ClipboardArea 
         onPaste={handlePaste}
