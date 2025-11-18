@@ -97,3 +97,30 @@ This session involved initial setup, major feature implementation, and subsequen
     *   **Enlarged Paste/Type Area:** Increased the default size of the text input field for pasting or typing content for improved usability.
 *   **Persistent Import Error Resolution:**
     *   Addressed a recurring `Attempted import error: '../components/ClipboardArea' does not contain a default export` by simplifying the export/import mechanism for the `ClipboardArea` component. This involved ensuring `ClipboardArea.tsx` exclusively used a default export and `Room.tsx` imported it as such, resolving module resolution conflicts.
+
+### 6. Current Session (2025-11-17) - PWA, HTTPS, and Cloudflare Tunneling
+
+This session focused on resolving issues related to the Instant Paste web application's behavior when added to an iPhone desktop shortcut, and then on setting up persistent HTTPS access using Cloudflare Tunneling.
+
+*   **PWA Functionality on iOS:**
+    *   Identified that the service worker registration in `client/src/index.tsx` was commented out, preventing full PWA functionality.
+    *   Uncommented the service worker registration code to enable PWA features, which should improve behavior when added to the home screen.
+    *   Provided general advice on ensuring HTTPS, clearing browser cache, re-adding the shortcut, and understanding iOS clipboard permissions.
+    *   Committed the change to enable the service worker.
+
+*   **Adding HTTPS:**
+    *   Provided detailed instructions on how to add HTTPS for local development using `cloudflared` and `ngrok`.
+    *   Briefly explained HTTPS setup for production deployments (reverse proxies, managed hosting).
+
+*   **Cloudflare Tunneling Issues & Persistent URL:**
+    *   Addressed the user's request for a persistent URL with `cloudflared`.
+    *   Provided step-by-step instructions for creating a named Cloudflare Tunnel, including authentication, tunnel creation, configuration (`config.yml`), and DNS routing.
+    *   Generated a template `config.yml` file for the user, with placeholders for their specific tunnel ID, credentials path, and desired hostname.
+    *   Troubleshot user errors during `cloudflared` setup:
+        *   Corrected the `cloudflared tunnel create` command by reminding the user to provide a tunnel name.
+        *   Diagnosed a `cert.pem` error, explaining it's due to a missing or failed `cloudflared tunnel login`, and provided steps to re-authenticate and verify the certificate.
+
+*   **University Wi-Fi Restrictions:**
+    *   Diagnosed a `cloudflared` error (`lookup cfd-features.argotunnel.com on 8.8.4.4:53: dial udp 8.8.4.4:53: i/o timeout`) as a network restriction (blocked external DNS).
+    *   Reiterated solutions: using a VPN, mobile hotspot, or trying `ngrok`.
+    *   Provided a list of reputable free VPNs for Android, along with critical warnings about their limitations and risks, and reiterated the recommendation for paid VPN services.
