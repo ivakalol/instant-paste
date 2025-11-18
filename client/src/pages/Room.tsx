@@ -48,6 +48,37 @@ const Room: React.FC = () => {
     setAutoCopyEnabled(enabled);
   };
 
+
+  const copyTextToClipboard = useCallback((text: string) => {
+    const textArea = document.createElement('textarea');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        showToast('Text auto-copied to clipboard', 'success');
+      } else {
+        showToast('Auto-copy failed. Please interact with the page first.', 'error');
+      }
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      showToast('Auto-copy failed. An unexpected error occurred.', 'error');
+    }
+    document.body.removeChild(textArea);
+  }, [showToast]);
+
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
     if (message.type === 'clipboard' && message.contentType && message.content) {
       const newItem: ClipboardItem = {
@@ -63,26 +94,29 @@ const Room: React.FC = () => {
         return updated;
       });
 
-      if (autoCopyEnabled && message.contentType === 'text' && navigator.clipboard) {
+      if (autoCopyEnabled && message.contentType === 'text') {
         const now = Date.now();
-        const lastAutoCopy = lastAutoCopyRef.current;
-        
-        if (now - lastAutoCopy > 2000) {
+        if (now - lastAutoCopyRef.current > 2000) {
           lastAutoCopyRef.current = now;
-          navigator.clipboard.writeText(message.content)
-            .then(() => {
-              showToast('Text auto-copied to clipboard', 'success');
-            })
-            .catch((err) => {
-              console.error('Auto-copy failed:', err);
-              showToast('Auto-copy failed. The browser may require you to interact with the page first.', 'error');
-            });
+          if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(message.content)
+              .then(() => {
+                showToast('Text auto-copied to clipboard', 'success');
+              })
+              .catch((err) => {
+                console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
+                copyTextToClipboard(message.content);
+              });
+          } else {
+            copyTextToClipboard(message.content);
+          }
         } else {
           console.log('Auto-copy rate limited, skipping...');
         }
       }
     }
-  }, [autoCopyEnabled, showToast]);
+  }, [autoCopyEnabled, showToast, copyTextToClipboard]);
+
 
   const { roomState, sendMessage, leaveRoom, isE2eeEnabled } = useWebSocket(
     handleClipboardReceived,
