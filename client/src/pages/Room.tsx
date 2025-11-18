@@ -105,10 +105,14 @@ const Room: React.FC = () => {
               })
               .catch((err) => {
                 console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
-                copyTextToClipboard(message.content);
+                if (message.content) {
+                  copyTextToClipboard(message.content);
+                }
               });
           } else {
-            copyTextToClipboard(message.content);
+            if (message.content) {
+              copyTextToClipboard(message.content);
+            }
           }
         } else {
           console.log('Auto-copy rate limited, skipping...');
