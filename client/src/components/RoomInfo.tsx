@@ -55,8 +55,8 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           <div className="room-actions">
             <button onClick={() => setShowQrCode(true)} className="btn btn-small" title="Show QR Code to Join">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm11.5 5.5a.5.5 0 0 0 0 1h-1a.5.5 0 0 0 0-1h1zm-2 2a.5.5 0 0 0 0 1h-1a.5.5 0 0 0 0-1h1zm-2 2a.5.5 0 0 0 0 1h-1a.5.5 0 0 0 0-1h1zm-2 2a.5.5 0 0 0 0 1h-1a.5.5 0 0 0 0-1h1zm-2 2a.5.5 0 0 0 0 1h-1a.5.5 0 0 0 0-1h1z"/>
-                <path d="M2 2h4v4H2V2zm1 1v2h2V3H3zm5 0h4v4H8V2zm1 1v2h2V3H9zM2 8h4v4H2V8zm1 1v2h2V9H3zm5 0h4v4H8V8zm1 1v2h2V9H9z"/>
+                <path d="M8.5 10a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5z"/>
+                <path d="M2 1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2H2zm11-1H5v14h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM3 13.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
               </svg>
               QR Code
             </button>

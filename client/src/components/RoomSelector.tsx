@@ -57,13 +57,14 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
         </form>
       </div>
       
-      <div className="info-box">
+      <div className="info-box" style={{ marginTop: '2rem', opacity: 0.95 }}>
         <h3>How it works:</h3>
         <ul>
           <li>Create a room or join with a room ID</li>
           <li>Paste text, images, or videos (Ctrl+V or tap paste area)</li>
           <li>Content instantly syncs to all devices in the same room</li>
           <li>Copy or download received content</li>
+          <li>All content is end-to-end encrypted</li>
         </ul>
       </div>
     </div>
