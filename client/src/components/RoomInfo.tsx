@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { RoomState } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
+import QRCodeModal from './QRCodeModal';
 
 interface RoomInfoProps {
   roomState: RoomState;
   onLeave: () => void;
-  onToggleEncryption: (enabled: boolean, password: string) => void;
   encryptionEnabled: boolean;
   autoCopyEnabled: boolean;
   onToggleAutoCopy: (enabled: boolean) => void;
@@ -15,24 +15,12 @@ interface RoomInfoProps {
 const RoomInfo: React.FC<RoomInfoProps> = ({ 
   roomState, 
   onLeave,
-  onToggleEncryption,
   encryptionEnabled,
   autoCopyEnabled,
   onToggleAutoCopy,
   showToast
 }) => {
-  const [showEncryption, setShowEncryption] = useState(false);
-  const [password, setPassword] = useState('');
-
-  const handleToggleEncryption = () => {
-    if (encryptionEnabled) {
-      onToggleEncryption(false, '');
-      setPassword('');
-    } else if (password) {
-      onToggleEncryption(true, password);
-      setShowEncryption(false);
-    }
-  };
+  const [showQrCode, setShowQrCode] = useState(false);
 
   const copyRoomId = async () => {
     if (roomState.roomId) {
@@ -45,61 +33,57 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
     }
   };
 
-  return (
-    <div className="room-info">
-      <div className="room-header">
-        <div className="room-details">
-          <h2>Room: {roomState.roomId}</h2>
-          <p className="client-count">
-            {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'} connected
-          </p>
-        </div>
-        <div className="room-actions">
-          <button onClick={copyRoomId} className="btn btn-small" title="Copy Room ID">
-            📋 Copy ID
-          </button>
-          <button onClick={onLeave} className="btn btn-small btn-danger">
-            ❌ Leave
-          </button>
-        </div>
-      </div>
+  const getRoomUrl = () => {
+    return `${window.location.origin}/${roomState.roomId}`;
+  };
 
-      <div className="encryption-section">
-        <button 
-          onClick={() => setShowEncryption(!showEncryption)}
-          className="btn btn-small"
-        >
-          🔐 {encryptionEnabled ? 'Encryption On' : 'Enable Encryption'}
-        </button>
-        
-        <button 
-          onClick={() => onToggleAutoCopy(!autoCopyEnabled)}
-          className="btn btn-small"
-          title="Auto-copy received text to clipboard"
-        >
-          📋 {autoCopyEnabled ? 'Auto-Copy On' : 'Auto-Copy Off'}
-        </button>
-        
-        {showEncryption && (
-          <div className="encryption-form">
-            <input
-              type="password"
-              placeholder="Enter encryption password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="password-input"
-            />
-            <button 
-              onClick={handleToggleEncryption}
-              className="btn btn-small"
-              disabled={!password && !encryptionEnabled}
-            >
-              {encryptionEnabled ? 'Disable' : 'Enable'}
+  return (
+    <>
+      <div className="room-info">
+        <div className="room-header">
+          <div className="room-details">
+            <h2>Room: {roomState.roomId}</h2>
+            <p className="client-count">
+              {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'} connected
+            </p>
+          </div>
+          <div className="room-actions">
+            <button onClick={() => setShowQrCode(true)} className="btn btn-small" title="Show QR Code to Join">
+              📱 QR
+            </button>
+            <button onClick={copyRoomId} className="btn btn-small" title="Copy Room ID">
+              📋 Copy ID
+            </button>
+            <button onClick={onLeave} className="btn btn-small btn-danger">
+              ❌ Leave
             </button>
           </div>
-        )}
+        </div>
+
+        <div className="encryption-controls">
+          <button 
+            className="btn btn-small"
+            disabled
+          >
+            🔐 {encryptionEnabled ? 'E2E Encrypted' : 'E2EE Disabled'}
+          </button>
+          
+          <button 
+            onClick={() => onToggleAutoCopy(!autoCopyEnabled)}
+            className={`btn btn-small ${autoCopyEnabled ? 'auto-copy-on' : 'auto-copy-off'}`}
+            title="Auto-copy received text to clipboard"
+          >
+            {autoCopyEnabled ? '[ON] Auto-Copy' : '[OFF] Auto-Copy'}
+          </button>
+        </div>
       </div>
-    </div>
+      {showQrCode && roomState.roomId && (
+        <QRCodeModal
+          roomUrl={getRoomUrl()}
+          onClose={() => setShowQrCode(false)}
+        />
+      )}
+    </>
   );
 };
 

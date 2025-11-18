@@ -232,7 +232,9 @@ body {
   gap: 10px;
 }
 
-.encryption-section {
+.encryption-controls {
+  display: flex;
+  gap: 10px;
   border-top: 1px solid #eee;
   padding-top: 15px;
 }
@@ -267,7 +269,7 @@ body {
 }
 
 .paste-zone {
-  min-height: 150px;
+  min-height: 200px;
   border: 3px dashed #ddd;
   border-radius: 8px;
   padding: 20px;
@@ -275,6 +277,21 @@ body {
   cursor: text;
   transition: all 0.3s ease;
   position: relative;
+}
+
+.text-preview button {
+  background-color: #f0f0f0;
+  border-radius: 5px;
+  padding: 3px 8px;
+  margin-left: 5px;
+  font-size: 0.85rem;
+  color: #555;
+  border: 1px solid #ccc;
+}
+
+.text-preview button:hover {
+  background-color: #e0e0e0;
+  border-color: #bbb;
 }
 
 .paste-zone:empty::before {
@@ -528,4 +545,14 @@ body {
 
 .toast-close:hover {
   color: #333;
+}
+
+.auto-copy-on {
+  background-color: #28a745;
+  color: white;
+}
+
+.auto-copy-off {
+  background-color: #6c757d;
+  color: white;
 }
