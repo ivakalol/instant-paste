@@ -94,7 +94,7 @@ const Room: React.FC = () => {
         return updated;
       });
 
-      if (autoCopyEnabled && message.contentType === 'text') {
+      if (autoCopyEnabled && message.contentType === 'text' && message.content) {
         const now = Date.now();
         if (now - lastAutoCopyRef.current > 2000) {
           lastAutoCopyRef.current = now;

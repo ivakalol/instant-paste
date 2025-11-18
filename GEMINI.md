@@ -124,3 +124,13 @@ This session focused on resolving issues related to the Instant Paste web applic
     *   Diagnosed a `cloudflared` error (`lookup cfd-features.argotunnel.com on 8.8.4.4:53: dial udp 8.8.4.4:53: i/o timeout`) as a network restriction (blocked external DNS).
     *   Reiterated solutions: using a VPN, mobile hotspot, or trying `ngrok`.
     *   Provided a list of reputable free VPNs for Android, along with critical warnings about their limitations and risks, and reiterated the recommendation for paid VPN services.
+
+# Interaction Model for Gemini CLI
+
+This project is primarily developed and tested on a separate device. The Gemini CLI's role is to assist with code modifications and provide changes for review.
+
+**Important Guidelines for Gemini CLI:**
+
+*   **Do NOT execute `npm run` commands:** All build, test, and run commands are handled on the external device.
+*   **Do NOT execute `git push`:** All `git push` operations are handled manually by the user on the external device.
+*   **Testing and Building:** Assume that testing and building will be performed by the user on the external device after code changes are provided.
