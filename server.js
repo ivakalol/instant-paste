@@ -154,21 +154,23 @@ function handleCreate(ws, publicKey) {
 function handleLeave(ws) {
   if (ws.roomId && rooms.has(ws.roomId)) {
     const room = rooms.get(ws.roomId);
-    room.clients.delete(ws.id);
+    if (room.clients.has(ws.id)) {
+      room.clients.delete(ws.id);
 
-    if (room.clients.size === 0) {
-      rooms.delete(ws.roomId);
-      log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Deleted (empty)`);
-      logRoomStatus();
-    } else {
-      broadcastToRoom(ws.roomId, { 
-        type: 'client-left',
-        clientId: ws.id,
-        clientCount: room.clients.size
-      });
-      log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Client ${ws.id} left. Total clients in room: ${room.clients.size}`);
+      if (room.clients.size === 0) {
+        rooms.delete(ws.roomId);
+        log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Deleted (empty)`);
+        logRoomStatus();
+      } else {
+        broadcastToRoom(ws.roomId, {
+          type: 'client-left',
+          clientId: ws.id,
+          clientCount: room.clients.size
+        });
+        log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Client ${ws.id} left. Total clients in room: ${room.clients.size}`);
+      }
+      ws.roomId = null;
     }
-    ws.roomId = null;
   }
 }
 
