@@ -199,6 +199,16 @@ function handleClipboard(ws, data) {
     timestamp: Date.now()
   };
 
+  // Add fileName if it exists
+  if (data.fileName) {
+    message.fileName = data.fileName;
+  }
+
+  // Add fileSize if it exists
+  if (data.fileSize !== undefined) {
+    message.fileSize = data.fileSize;
+  }
+
   if (data.encryptedContent) {
     message.encryptedContent = data.encryptedContent;
     log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Encrypted clipboard data relayed from ${ws.id}`);

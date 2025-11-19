@@ -3,12 +3,21 @@ import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardIt
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
 interface ClipboardAreaProps {
-  onPaste: (type: string, content: string) => void;
+  onPaste: (type: string, content: string, name?: string, size?: number) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
 }
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
 
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
@@ -36,18 +45,15 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  // Helper function to read and process files
   const processFile = useCallback((file: File) => {
-    const passwordPromptSize = 50 * 1024 * 1024; // 50 MB
+    const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
     const requiredPassword = "qwerty7654321";
 
     if (file.size > passwordPromptSize) {
-      const enteredPassword = prompt("This file is larger than 50MB. Please enter the password to proceed:");
-
-      if (enteredPassword === null) { // User cancelled the prompt
-        return; 
+      const enteredPassword = prompt(`This file is larger than 150MB. Please enter the password to proceed:`);
+      if (enteredPassword === null) {
+        return;
       }
-
       if (enteredPassword !== requiredPassword) {
         showToast('Incorrect password.', 'error');
         return;
@@ -62,11 +68,13 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
       }
       if (file.type.startsWith('image/')) {
-        onPaste('image', reader.result);
+        onPaste('image', reader.result, file.name, file.size);
       } else if (file.type.startsWith('video/')) {
-        onPaste('video', reader.result);
+        onPaste('video', reader.result, file.name, file.size);
       } else if (file.type.startsWith('text/')) {
-        onPaste('text', reader.result);
+        onPaste('text', reader.result, file.name, file.size);
+      } else {
+        onPaste('file', reader.result, file.name, file.size);
       }
     };
     reader.onerror = () => {
@@ -81,32 +89,22 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   }, [onPaste, showToast]);
 
-  // Helper function to process clipboard items
   const processClipboardItem = useCallback((item: DataTransferItem) => {
-    if (item.type.startsWith('text/')) {
-      item.getAsString((text) => {
-        onPaste('text', text);
-      });
-    } else if (item.type.startsWith('image/')) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processFile(blob);
-      }
-    } else if (item.type.startsWith('video/')) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processFile(blob);
+    if (item.kind === 'string' && item.type.startsWith('text/')) {
+      item.getAsString((text) => onPaste('text', text));
+    } else if (item.kind === 'file') {
+      const file = item.getAsFile();
+      if (file) {
+        processFile(file);
       }
     }
   }, [onPaste, processFile]);
 
   useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
+    const handlePaste = (e: ClipboardEvent) => {
       e.preventDefault();
-      
       const items = e.clipboardData?.items;
       if (!items) return;
-
       for (let i = 0; i < items.length; i++) {
         processClipboardItem(items[i]);
       }
@@ -124,10 +122,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     };
   }, [processClipboardItem]);
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       processFile(files[0]);
@@ -159,11 +156,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       try {
         const response = await fetch(item.content);
         const blob = await response.blob();
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            [blob.type]: blob,
-          }),
-        ]);
+        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
         showToast('Image copied to clipboard!', 'success');
         setCopiedItemId(item.id);
         setTimeout(() => setCopiedItemId(null), 1000);
@@ -176,36 +169,23 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  // Helper to extract MIME type from data URL
   const getMimeType = (dataUrl: string): string | null => {
     const match = dataUrl.match(/^data:([^;]+);/);
     return match ? match[1] : null;
   };
 
-  // Helper to map MIME type to file extension
   const getExtension = (mimeType: string | null, fallback: string): string => {
     const mimeToExt: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/png': 'png',
-      'image/gif': 'gif',
-      'image/webp': 'webp',
-      'video/mp4': 'mp4',
-      'video/webm': 'webm',
-      'video/ogg': 'ogv',
-      // add more mappings as needed
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv',
     };
     return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
   };
 
   const handleDownload = (item: ClipboardHistoryItem) => {
-    let ext = 'txt';
-    if (item.type === 'image' || item.type === 'video') {
-      const mimeType = getMimeType(item.content);
-      ext = getExtension(mimeType, item.type === 'image' ? 'png' : 'mp4');
-    }
-    const filename = `paste-${item.id}.${ext}`;
+    const filename = item.name || `paste-${item.id}.${getExtension(getMimeType(item.content), 'txt')}`;
     
-    if (item.type === 'text') {
+    if (item.type === 'text' && !item.name) {
       const blob = new Blob([item.content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       downloadFile(url, filename);
@@ -223,7 +203,6 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Send on Ctrl+Enter or Cmd+Enter
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSendText();
@@ -239,10 +218,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         value={typedText}
         onChange={(e) => setTypedText(e.target.value)}
         onKeyDown={handleKeyDown}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         rows={10}
@@ -250,41 +226,18 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       />
       
       <div className="actions">
-        <button 
-          onClick={handleSendText}
-          className="btn btn-primary"
-          disabled={!typedText.trim()}
-          style={{ marginRight: '10px' }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11zM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493z"/>
-          </svg>
+        <button onClick={handleSendText} className="btn btn-primary" disabled={!typedText.trim()} style={{ marginRight: '10px' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11zM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493z"/></svg>
           Send Text
         </button>
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="btn btn-secondary"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/>
-            <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/>
-          </svg>
+        <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/></svg>
           Choose File
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={handleFileSelect}
-          accept="image/*,video/*,text/*"
-          style={{ display: 'none' }}
-        />
+        <input ref={fileInputRef} type="file" onChange={handleFileSelect} style={{ display: 'none' }} />
       </div>
 
-      {encryptionEnabled && (
-        <div className="encryption-indicator">
-          🔒 Encryption enabled
-        </div>
-      )}
+      {encryptionEnabled && ( <div className="encryption-indicator">🔒 Encryption enabled</div> )}
 
       <div className="history">
         <h3>Recent Clips ({history.length})</h3>
@@ -305,27 +258,25 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       )}
                     </div>
                   )}
-                  {item.type === 'image' && (
-                    <img src={item.content} alt="Pasted" className="media-preview" />
-                  )}
-                  {item.type === 'video' && (
-                    <video src={item.content} className="media-preview" controls />
+                  {item.type === 'image' && ( <img src={item.content} alt={item.name || 'Pasted Image'} className="media-preview" /> )}
+                  {item.type === 'video' && ( <video src={item.content} className="media-preview" controls /> )}
+                  {item.type === 'file' && (
+                    <div className="file-preview">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M4 0h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
+                        <path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
+                      </svg>
+                      <span className="file-name">{item.name || 'Untitled File'}</span>
+                      {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
+                    </div>
                   )}
                 </div>
                 <div className="item-actions">
                   <span className="item-type">{item.type}</span>
-                  <span className="item-timestamp">
-                    {new Date(item.timestamp).toLocaleTimeString()}
-                  </span>
-                  <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">
-                    📋
-                  </button>
-                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download">
-                    💾
-                  </button>
-                  <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">
-                    🗑️
-                  </button>
+                  <span className="item-timestamp">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                  <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">📋</button>
+                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download">💾</button>
+                  <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">🗑️</button>
                 </div>
               </div>
             ))

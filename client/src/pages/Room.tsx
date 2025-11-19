@@ -89,9 +89,11 @@ const Room: React.FC = () => {
     if (message.type === 'clipboard' && message.contentType && message.content) {
       const newItem: ClipboardItem = {
         id: Date.now().toString(),
-        type: message.contentType as 'text' | 'image' | 'video',
+        type: message.contentType as ClipboardItem['type'],
         content: message.content,
         timestamp: message.timestamp || Date.now(),
+        name: message.fileName,
+        size: message.fileSize,
         encrypted: true, // E2EE is always on
       };
 
@@ -180,11 +182,13 @@ const Room: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast, isHistoryLoaded]);
 
-  const handlePaste = useCallback(async (type: string, content: string) => {
+  const handlePaste = useCallback(async (type: string, content: string, name?: string, size?: number) => {
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
-      type: type as 'text' | 'image' | 'video',
+      type: type as ClipboardItem['type'],
       content,
+      name,
+      size,
       timestamp: Date.now(),
       encrypted: true,
     };
@@ -198,6 +202,8 @@ const Room: React.FC = () => {
       type: 'clipboard',
       contentType: type,
       content: content,
+      fileName: name,
+      fileSize: size,
     });
 
     if (!sent) {
