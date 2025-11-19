@@ -4,6 +4,7 @@ import RoomInfo from '../components/RoomInfo';
 import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
+import { loadHistory, saveHistory, clearHistory } from '../utils/indexedDB';
 import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import '../App.css';
@@ -19,6 +20,7 @@ const Room: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const [history, setHistory] = useState<ClipboardItem[]>([]);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [autoCopyEnabled, setAutoCopyEnabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const lastAutoCopyRef = useRef<number>(0);
@@ -132,25 +134,22 @@ const Room: React.FC = () => {
   );
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem(`clipboardHistory_${roomId}`);
-    if (savedHistory) {
+    if (!roomId) return;
+    const fetchHistory = async () => {
       try {
-        const parsed = JSON.parse(savedHistory);
-        if (Array.isArray(parsed) && parsed.every(item => 
-          item && typeof item === 'object' && 
-          'type' in item && 'content' in item && 'timestamp' in item
-        )) {
-          setHistory(parsed);
-        } else {
-          console.warn('Invalid history format in localStorage, clearing...');
-          localStorage.removeItem(`clipboardHistory_${roomId}`);
+        const savedHistory = await loadHistory(roomId);
+        if (savedHistory && Array.isArray(savedHistory)) {
+          setHistory(savedHistory);
         }
       } catch (error) {
-        console.error('Failed to load history:', error);
-        localStorage.removeItem(`clipboardHistory_${roomId}`);
+        console.error('Failed to load history from IndexedDB:', error);
+        showToast('Could not load history.', 'error');
+      } finally {
+        setIsHistoryLoaded(true);
       }
-    }
-  }, [roomId]);
+    };
+    fetchHistory();
+  }, [roomId, showToast]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -163,16 +162,23 @@ const Room: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
+    if (!roomId || !isHistoryLoaded) return;
+  
+    const timeoutId = setTimeout(async () => {
       try {
-        localStorage.setItem(`clipboardHistory_${roomId}`, JSON.stringify(history));
-      } catch (e) {
-        console.error('Failed to save history to localStorage:', e);
-        showToast('Storage quota exceeded. History not saved.', 'error');
+        await saveHistory(roomId, history);
+      } catch (error) {
+        console.error('Failed to save history to IndexedDB:', error);
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          showToast('Storage quota exceeded. History not saved.', 'error');
+        } else {
+          showToast('Failed to save history.', 'error');
+        }
       }
     }, 1000);
+  
     return () => clearTimeout(timeoutId);
-  }, [history, roomId, showToast]);
+  }, [history, roomId, showToast, isHistoryLoaded]);
 
   const handlePaste = useCallback(async (type: string, content: string) => {
     const newItem: ClipboardItem = {
@@ -209,12 +215,17 @@ const Room: React.FC = () => {
     showToast('Clip deleted from history', 'info');
   }, [showToast]);
 
-  const handleClearAll = useCallback(() => {
+  const handleClearAll = useCallback(async () => {
     setHistory([]);
     if (roomId) {
-      localStorage.removeItem(`clipboardHistory_${roomId}`);
+      try {
+        await clearHistory(roomId);
+        showToast('All clips have been deleted from history', 'info');
+      } catch (error) {
+        console.error('Failed to clear history from IndexedDB:', error);
+        showToast('Could not clear history.', 'error');
+      }
     }
-    showToast('All clips have been deleted from history', 'info');
   }, [roomId, showToast]);
 
   return (

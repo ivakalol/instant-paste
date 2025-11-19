@@ -38,16 +38,20 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
   // Helper function to read and process files
   const processFile = useCallback((file: File) => {
-    // Validate file size before reading (50MB limit for base64-encoded content)
-    // For text: 50MB text limit
-    // For binary (images/videos): 37.5MB original file = ~50MB base64
-    const MAX_SIZE = file.type.startsWith('text/') ? 50 * 1024 * 1024 : 37.5 * 1024 * 1024;
-    
-    if (file.size > MAX_SIZE) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      const maxMB = (MAX_SIZE / (1024 * 1024)).toFixed(1);
-      showToast(`File too large (${sizeMB}MB). Maximum size is ${maxMB}MB.`, 'error');
-      return;
+    const passwordPromptSize = 50 * 1024 * 1024; // 50 MB
+    const requiredPassword = "qwerty7654321";
+
+    if (file.size > passwordPromptSize) {
+      const enteredPassword = prompt("This file is larger than 50MB. Please enter the password to proceed:");
+
+      if (enteredPassword === null) { // User cancelled the prompt
+        return; 
+      }
+
+      if (enteredPassword !== requiredPassword) {
+        showToast('Incorrect password.', 'error');
+        return;
+      }
     }
     
     const reader = new FileReader();
