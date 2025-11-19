@@ -67,6 +67,9 @@ const Room: React.FC = () => {
     textArea.focus();
     textArea.select();
     try {
+      // Fallback for browsers (e.g., Firefox) that do not support the asynchronous Clipboard API.
+      // document.execCommand('copy') is deprecated, but still required for compatibility due to stricter clipboard security policies.
+      // Prefer using navigator.clipboard.writeText when available.
       const successful = document.execCommand('copy');
       if (successful) {
         showToast('Text auto-copied to clipboard', 'success');
