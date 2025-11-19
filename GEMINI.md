@@ -170,6 +170,58 @@ This session focused on connecting the application to a custom domain (`ivaka-we
     *   The application was successfully brought online at `https://ivaka-website.me`.
     *   Finally, the user was provided with a corrected `config.yml` template to enable the simpler, persistent `cloudflared tunnel run instant-paste-tunnel` command for future use.
 
+### 9. Current Session (2025-11-19) - UI/UX Enhancements, Bug Fixes, and Build System Improvements
+
+This session focused on significant UI/UX enhancements, resolving critical build issues, improving client-server synchronization, and enhancing server observability.
+
+*   **UI/UX Improvements:**
+    *   **RoomSelector Feature Section Redesign:** The "How it works" section in `RoomSelector.tsx` was redesigned from a simple list to a more visually appealing grid of feature cards with SVG icons.
+    *   **Mobile Responsiveness for Features:** Added specific media queries to `App.css` to ensure the redesigned feature section adapts gracefully to smaller screens, adjusting grid layout, padding, font sizes, and icon sizes for optimal mobile display.
+*   **Bug Fixes:**
+    *   **Client Count Accuracy:** Resolved a bug where the client count in rooms was consistently off by +1. This was fixed by making the server (`server.js`) the authoritative source for client counts, including the count in `client-joined` and `client-left` messages. The client (`client/src/utils/useWebSocket.ts`) was updated to use this server-provided count directly.
+    *   **Image Copy Functionality:** Addressed the inability to copy images from the clipboard history. The `handleCopy` function in `ClipboardArea.tsx` was extended to correctly handle image types by fetching data URLs as Blobs and using the modern `navigator.clipboard.write` API. It also includes appropriate error handling and user feedback for unsupported types or browser limitations.
+*   **Build System Improvements & Debugging:**
+    *   **Service Worker Auto-Update:** Implemented a robust auto-update mechanism for the service worker. This involved adding a `controllerchange` event listener in `client/src/index.tsx` to automatically reload the page when a new service worker activates, combined with a periodic update check, effectively solving stale content issues.
+    *   **Persistent Build Error Resolution:** Diagnosed and fixed a stubborn `Attempted import error: 'ClipboardItem' is not exported` error during client build. This was resolved by refactoring the `ClipboardItem` interface from `client/src/types/index.ts` into its own dedicated file (`client/src/types/ClipboardItem.ts`), and updating all import statements to directly reference this new file, bypassing a module resolution ambiguity.
+*   **Server Observability:**
+    *   **Enhanced Server-Side Logging:** Implemented a structured logging utility in `server.js` with `INFO`, `WARN`, and `ERROR` levels. All `console.log`/`console.error` calls were replaced with the new utility, providing more contextual information (e.g., room ID, client ID, client counts).
+    *   **Room Status Monitoring:** Added a `logRoomStatus` function to `server.js` which provides periodic and event-driven summaries of active rooms and their client counts, enhancing server state visibility.
+*   **Troubleshooting Cloudflare Tunnel:**
+    *   Diagnosed user-reported "Cloudflare Tunnel error 1033" as an issue with `cloudflared` not running or being blocked by network restrictions (student WiFi without VPN). Provided guidance on restarting `cloudflared` and using a VPN or mobile hotspot.
+
+*   **Auto-Copy Fix for Firefox:**
+    *   Implemented a fallback mechanism for `navigator.clipboard.writeText` using `document.execCommand('copy')` to ensure auto-copy functionality works in Firefox, which has stricter security policies for clipboard access.
+    *   Added a check to ensure `message.content` is defined before attempting to copy, resolving a TypeScript compilation error (`TS2345`).
+*   **Clipboard History Management:**
+    *   **Clear All Clips:** Added a "Clear All" button to the `RoomInfo` component, allowing users to clear their entire clipboard history for the current room. This action also clears the history from `localStorage`.
+    *   **Auto-Delete Old Clips:** Implemented a `useEffect` hook in `Room.tsx` that automatically removes clipboard items older than 30 minutes from the history, ensuring a cleaner and more manageable history.
+*   **Dark Mode Implementation:**
+    *   **CSS Variables:** Defined a comprehensive set of CSS variables for colors in `index.css` for both light and dark themes.
+    *   **Theming Logic:** Implemented a `ThemeContext` in `App.tsx` to manage the `isDarkMode` state and persist the user's theme preference in `localStorage`. The `dark-mode` class is dynamically applied to the `body` element.
+    *   **Component Integration:** Integrated the `useTheme` hook and a theme toggle button into the `RoomInfo` component, allowing users to switch between light and dark modes.
+    *   **Styling Updates:** Updated `App.css` and `QRCodeModal.css` to utilize the new CSS variables, ensuring a consistent look across both themes.
+*   **UI Refinements:**
+    *   **Modern Typography:** Integrated the "Inter" font from Google Fonts for a more modern and readable typography.
+    *   **Button Styling:** Improved the visual appearance of the "Send Text" and "Choose File" buttons in `ClipboardArea.tsx`, making them more prominent and consistent with the new design language.
+    *   **Iconography:** Replaced emoji icons with more professional SVG icons for various actions (QR Code, Copy ID, Leave, Encryption, Clear All, Theme Toggle) in `RoomInfo.tsx`.
+    *   **Layout and Spacing:** Adjusted spacing between buttons in `ClipboardArea.tsx` for better visual separation.
+    *   **RoomSelector Enhancements:** Added a new list item to the "How it works" section in `RoomSelector.tsx` and applied a slight opacity to the text for a softer look.
+*   **Import/Export Corrections:**
+    *   Resolved import/export errors related to `RoomInfo` component by ensuring consistent default exports and imports across `RoomInfo.tsx` and `Room.tsx`.
+
+### 10. Current Session (2025-11-19) - WebSocket Refactor and Inactive Room Shutdown
+
+This session focused on resolving a persistent bug with the client count and implementing a new feature to shut down inactive rooms.
+
+*   **WebSocket Refactor:**
+    *   **Simplified Client-Side Logic:** The client-side code in `useWebSocket.ts` was refactored to use a single `room-update` message from the server. This eliminates the need for the client to perform any calculations to determine the client count, making the client-side logic simpler and more robust.
+    *   **Simplified Server-Side Logic:** The server-side logic in `server.js` was also simplified to use a single `room-update` message. This makes the server the single source of truth for the room state and eliminates the race conditions that were causing the client count to be incorrect.
+*   **Inactive Room Shutdown:**
+    *   **`lastActivity` Timestamp:** A `lastActivity` timestamp was added to each room object. This timestamp is updated whenever there is activity in the room.
+    *   **Periodic Check for Inactive Rooms:** A `setInterval` was added to the server to check for and shut down inactive rooms every minute. A room is considered inactive if it has been inactive for more than 1 hour.
+*   **Log Coloring:**
+    *   The "Active Rooms Status" logs are now colored green to make them more readable.
+
 # Interaction Model for Gemini CLI
 
 This project is primarily developed and tested on a separate device. The Gemini CLI's role is to assist with code modifications and provide changes for review.
