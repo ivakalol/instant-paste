@@ -5,6 +5,31 @@ const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
 
+const LOG_LEVELS = {
+  INFO: 'INFO',
+  WARN: 'WARN',
+  ERROR: 'ERROR'
+};
+
+function log(level, message, ...args) {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [${level}] ${message}`, ...args);
+}
+
+const ROOM_STATUS_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+function logRoomStatus() {
+  if (rooms.size === 0) {
+    log(LOG_LEVELS.INFO, 'No active rooms.');
+    return;
+  }
+  log(LOG_LEVELS.INFO, `--- Active Rooms Status (${rooms.size} total) ---`);
+  rooms.forEach((room, roomId) => {
+    log(LOG_LEVELS.INFO, `  Room ID: ${roomId}, Clients: ${room.clients.size}`);
+  });
+  log(LOG_LEVELS.INFO, '-----------------------------------');
+}
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -28,7 +53,7 @@ function generateRoomId() {
 
 wss.on('connection', (ws) => {
   ws.id = crypto.randomUUID();
-  console.log(`New client connected: ${ws.id}`);
+  log(LOG_LEVELS.INFO, `[WS] Client connected: ${ws.id}`);
   
   ws.isAlive = true;
   ws.on('pong', () => {
@@ -52,20 +77,20 @@ wss.on('connection', (ws) => {
           handleClipboard(ws, data);
           break;
         default:
-          console.log('Unknown message type:', data.type);
+          log(LOG_LEVELS.WARN, 'Unknown message type:', data.type);
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      log(LOG_LEVELS.ERROR, 'Error handling message:', error);
     }
   });
 
   ws.on('close', () => {
-    console.log(`Client disconnected: ${ws.id}`);
+    log(LOG_LEVELS.INFO, `[WS] Client disconnected: ${ws.id}`);
     handleLeave(ws);
   });
 
   ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
+    log(LOG_LEVELS.ERROR, 'WebSocket error:', error);
   });
 });
 
@@ -104,7 +129,7 @@ function handleJoin(ws, roomId, publicKey) {
     clientCount: room.clients.size
   }, ws);
 
-  console.log(`Client ${ws.id} joined room ${roomId} (${room.clients.size} clients)`);
+  log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Client ${ws.id} joined. Total clients in room: ${room.clients.size}`);
 }
 
 function handleCreate(ws, publicKey) {
@@ -122,7 +147,8 @@ function handleCreate(ws, publicKey) {
     clientId: ws.id
   }));
 
-  console.log(`Room ${roomId} created by ${ws.id}`);
+  log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Created by client ${ws.id}`);
+  logRoomStatus();
 }
 
 function handleLeave(ws) {
@@ -132,14 +158,15 @@ function handleLeave(ws) {
 
     if (room.clients.size === 0) {
       rooms.delete(ws.roomId);
-      console.log(`Room ${ws.roomId} deleted (empty)`);
+      log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Deleted (empty)`);
+      logRoomStatus();
     } else {
       broadcastToRoom(ws.roomId, { 
         type: 'client-left',
         clientId: ws.id,
         clientCount: room.clients.size
       });
-      console.log(`Client ${ws.id} left room ${ws.roomId} (${room.clients.size} clients remaining)`);
+      log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Client ${ws.id} left. Total clients in room: ${room.clients.size}`);
     }
     ws.roomId = null;
   }
@@ -160,10 +187,10 @@ function handleClipboard(ws, data) {
 
   if (data.encryptedContent) {
     message.encryptedContent = data.encryptedContent;
-    console.log(`Encrypted clipboard data relayed in room ${ws.roomId}`);
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Encrypted clipboard data relayed from ${ws.id}`);
   } else {
     message.content = data.content;
-    console.log(`Clipboard data relayed in room ${ws.roomId}`);
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Unencrypted clipboard data relayed from ${ws.id}`);
   }
 
   broadcastToRoom(ws.roomId, message, ws);
@@ -203,14 +230,17 @@ app.get('*', (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Access at: http://localhost:${PORT}`);
+  log(LOG_LEVELS.INFO, `Server running on port ${PORT}`);
+  log(LOG_LEVELS.INFO, `Access at: http://localhost:${PORT}`);
 });
 
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
+  log(LOG_LEVELS.INFO, 'SIGTERM received, closing server...');
   server.close(() => {
-    console.log('Server closed');
+    log(LOG_LEVELS.INFO, 'Server closed');
     process.exit(0);
   });
 });
+
+// Start periodic room status logging
+setInterval(logRoomStatus, ROOM_STATUS_INTERVAL);
