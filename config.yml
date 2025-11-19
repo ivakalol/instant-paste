@@ -1,7 +1,0 @@
-tunnel: 6a0ecdc7-3c2d-46a9-bb7b-b5b69d3e2a5d
-credentials-file: /home/ivaka/.cloudflared/6a0ecdc7-3c2d-46a9-bb7b-b5b69d3e2a5d.json
-
-ingress:
-  - hostname: ivaka-website.me
-    service: http://localhost:3000
-  - service: http_status:404
