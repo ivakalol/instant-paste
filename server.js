@@ -140,12 +140,18 @@ function handleCreate(ws, publicKey) {
   ws.roomId = roomId;
   room.clients.set(ws.id, { ws, publicKey });
 
-  ws.send(JSON.stringify({ 
-    type: 'created', 
+  ws.send(JSON.stringify({
+    type: 'created',
     roomId: roomId,
     clients: [{ id: ws.id, publicKey }],
     clientId: ws.id
   }));
+
+  broadcastToRoom(roomId, {
+    type: 'client-joined',
+    client: { id: ws.id, publicKey },
+    clientCount: room.clients.size
+  }, ws);
 
   log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Created by client ${ws.id}`);
   logRoomStatus();
