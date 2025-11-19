@@ -30,7 +30,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
 
   return (
     <div className="room-selector">
-      <h1>Instant Paste</h1>
+      <h1>Ivaka Instant Paste</h1>
       <p className="subtitle">Real-time clipboard sync between devices</p>
       
       <div className="room-options">
@@ -57,14 +57,46 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
         </form>
       </div>
       
-      <div className="info-box">
-        <h3>How it works:</h3>
-        <ul>
-          <li>Create a room or join with a room ID</li>
-          <li>Paste text, images, or videos (Ctrl+V or tap paste area)</li>
-          <li>Content instantly syncs to all devices in the same room</li>
-          <li>Copy or download received content</li>
-        </ul>
+      <div className="features-section">
+        <h3 className="features-title">How It Works</h3>
+        <div className="features-grid">
+          <div className="feature-item">
+            <div className="feature-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <h4>Create or Join Rooms</h4>
+            <p>Start a new temporary room with one click or join an existing one with a simple ID.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+              </svg>
+            </div>
+            <h4>Paste Anything</h4>
+            <p>Sync text, images, and video files. Just paste, drag & drop, or select a file.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.81m5.84-2.57a14.98 14.98 0 00-5.84-2.57m-2.57-5.84A14.98 14.98 0 005.63 11.91m12.42 2.46a14.98 14.98 0 00-2.46-12.42" />
+              </svg>
+            </div>
+            <h4>Instant Sync</h4>
+            <p>Your clipboard is shared in real-time with all connected devices in the room.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+            </div>
+            <h4>E2E Encrypted</h4>
+            <p>All data is end-to-end encrypted. Only encrypted content is sent over the internet. Your content is never stored on our server.</p>
+          </div>
+        </div>
       </div>
     </div>
   );

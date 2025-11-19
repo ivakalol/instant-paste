@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ClipboardItem } from '../types';
+import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
 interface ClipboardAreaProps {
   onPaste: (type: string, content: string) => void;
-  history: ClipboardItem[];
+  history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
@@ -22,6 +22,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => {
@@ -136,14 +137,38 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  const handleCopy = async (item: ClipboardItem) => {
+  const handleCopy = async (item: ClipboardHistoryItem) => {
     if (item.type === 'text') {
       const success = await copyToClipboard(item.content);
       if (success) {
         showToast('Copied to clipboard!', 'success');
+        setCopiedItemId(item.id);
+        setTimeout(() => setCopiedItemId(null), 1000);
       } else {
         showToast('Failed to copy to clipboard', 'error');
       }
+    } else if (item.type === 'image') {
+      if (!navigator.clipboard || !navigator.clipboard.write) {
+        showToast('Copying images is not supported in your browser.', 'error');
+        return;
+      }
+      try {
+        const response = await fetch(item.content);
+        const blob = await response.blob();
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [blob.type]: blob,
+          }),
+        ]);
+        showToast('Image copied to clipboard!', 'success');
+        setCopiedItemId(item.id);
+        setTimeout(() => setCopiedItemId(null), 1000);
+      } catch (error) {
+        console.error('Failed to copy image to clipboard:', error);
+        showToast('Failed to copy image.', 'error');
+      }
+    } else {
+        showToast(`Cannot copy ${item.type} directly. Please use the download button.`, 'info');
     }
   };
 
@@ -168,7 +193,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
   };
 
-  const handleDownload = (item: ClipboardItem) => {
+  const handleDownload = (item: ClipboardHistoryItem) => {
     let ext = 'txt';
     if (item.type === 'image' || item.type === 'video') {
       const mimeType = getMimeType(item.content);
@@ -223,16 +248,24 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       <div className="actions">
         <button 
           onClick={handleSendText}
-          className="send-btn"
+          className="btn btn-primary"
           disabled={!typedText.trim()}
+          style={{ marginRight: '10px' }}
         >
-          📤 Send Text
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11zM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493z"/>
+          </svg>
+          Send Text
         </button>
         <button 
           onClick={() => fileInputRef.current?.click()}
-          className="btn btn-small"
+          className="btn btn-secondary"
         >
-          📎 Choose File
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/>
+            <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/>
+          </svg>
+          Choose File
         </button>
         <input
           ref={fileInputRef}
@@ -256,7 +289,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
             <p className="empty-state">No clips yet. Start pasting!</p>
           ) : (
             history.map((item) => (
-              <div key={item.id} className="history-item">
+              <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
                 <div className="item-content">
                   {item.type === 'text' && (
                     <div className="text-preview">
@@ -277,6 +310,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                 </div>
                 <div className="item-actions">
                   <span className="item-type">{item.type}</span>
+                  <span className="item-timestamp">
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </span>
                   <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">
                     📋
                   </button>

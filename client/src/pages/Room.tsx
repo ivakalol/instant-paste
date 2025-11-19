@@ -4,7 +4,8 @@ import RoomInfo from '../components/RoomInfo';
 import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
-import { ClipboardItem, WebSocketMessage } from '../types';
+import type { ClipboardItem } from '../types/ClipboardItem';
+import { WebSocketMessage } from '../types/index';
 import '../App.css';
 
 const MAX_HISTORY = 20;
@@ -48,6 +49,40 @@ const Room: React.FC = () => {
     setAutoCopyEnabled(enabled);
   };
 
+
+  const copyTextToClipboard = useCallback((text: string) => {
+    const textArea = document.createElement('textarea');
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      // Fallback for browsers (e.g., Firefox) that do not support the asynchronous Clipboard API.
+      // document.execCommand('copy') is deprecated, but still required for compatibility due to stricter clipboard security policies.
+      // Prefer using navigator.clipboard.writeText when available.
+      const successful = document.execCommand('copy');
+      if (successful) {
+        showToast('Text auto-copied to clipboard', 'success');
+      } else {
+        showToast('Auto-copy failed. Please interact with the page first.', 'error');
+      }
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      showToast('Auto-copy failed. An unexpected error occurred.', 'error');
+    }
+    document.body.removeChild(textArea);
+  }, [showToast]);
+
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
     if (message.type === 'clipboard' && message.contentType && message.content) {
       const newItem: ClipboardItem = {
@@ -63,26 +98,33 @@ const Room: React.FC = () => {
         return updated;
       });
 
-      if (autoCopyEnabled && message.contentType === 'text' && navigator.clipboard) {
+      if (autoCopyEnabled && message.contentType === 'text' && message.content) {
         const now = Date.now();
-        const lastAutoCopy = lastAutoCopyRef.current;
-        
-        if (now - lastAutoCopy > 2000) {
+        if (now - lastAutoCopyRef.current > 2000) {
           lastAutoCopyRef.current = now;
-          navigator.clipboard.writeText(message.content)
-            .then(() => {
-              showToast('Text auto-copied to clipboard', 'success');
-            })
-            .catch((err) => {
-              console.error('Auto-copy failed:', err);
-              showToast('Auto-copy failed. The browser may require you to interact with the page first.', 'error');
-            });
+          if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(message.content)
+              .then(() => {
+                showToast('Text auto-copied to clipboard', 'success');
+              })
+              .catch((err) => {
+                console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
+                if (message.content) {
+                  copyTextToClipboard(message.content);
+                }
+              });
+          } else {
+            if (message.content) {
+              copyTextToClipboard(message.content);
+            }
+          }
         } else {
           console.log('Auto-copy rate limited, skipping...');
         }
       }
     }
-  }, [autoCopyEnabled, showToast]);
+  }, [autoCopyEnabled, showToast, copyTextToClipboard]);
+
 
   const { roomState, sendMessage, leaveRoom, isE2eeEnabled } = useWebSocket(
     handleClipboardReceived,
@@ -109,6 +151,16 @@ const Room: React.FC = () => {
       }
     }
   }, [roomId]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const thirtyMinutes = 30 * 60 * 1000;
+      setHistory(prev => prev.filter(item => now - item.timestamp < thirtyMinutes));
+    }, 60 * 1000); // Run every minute
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -157,6 +209,14 @@ const Room: React.FC = () => {
     showToast('Clip deleted from history', 'info');
   }, [showToast]);
 
+  const handleClearAll = useCallback(() => {
+    setHistory([]);
+    if (roomId) {
+      localStorage.removeItem(`clipboardHistory_${roomId}`);
+    }
+    showToast('All clips have been deleted from history', 'info');
+  }, [roomId, showToast]);
+
   return (
     <>
       <RoomInfo 
@@ -166,6 +226,7 @@ const Room: React.FC = () => {
         autoCopyEnabled={autoCopyEnabled}
         onToggleAutoCopy={handleToggleAutoCopy}
         showToast={showToast}
+        onClearAll={handleClearAll}
       />
       <ClipboardArea 
         onPaste={handlePaste}
