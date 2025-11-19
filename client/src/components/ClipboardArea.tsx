@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { ClipboardItem } from '../types/ClipboardItem';
+import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
 interface ClipboardAreaProps {
   onPaste: (type: string, content: string) => void;
-  history: ClipboardItem[];
+  history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
@@ -137,7 +137,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  const handleCopy = async (item: ClipboardItem) => {
+  const handleCopy = async (item: ClipboardHistoryItem) => {
     if (item.type === 'text') {
       const success = await copyToClipboard(item.content);
       if (success) {
@@ -193,7 +193,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
   };
 
-  const handleDownload = (item: ClipboardItem) => {
+  const handleDownload = (item: ClipboardHistoryItem) => {
     let ext = 'txt';
     if (item.type === 'image' || item.type === 'video') {
       const mimeType = getMimeType(item.content);
