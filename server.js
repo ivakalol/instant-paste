@@ -100,7 +100,8 @@ function handleJoin(ws, roomId, publicKey) {
 
   broadcastToRoom(roomId, { 
     type: 'client-joined',
-    client: { id: ws.id, publicKey }
+    client: { id: ws.id, publicKey },
+    clientCount: room.clients.size
   }, ws);
 
   console.log(`Client ${ws.id} joined room ${roomId} (${room.clients.size} clients)`);
@@ -135,7 +136,8 @@ function handleLeave(ws) {
     } else {
       broadcastToRoom(ws.roomId, { 
         type: 'client-left',
-        clientId: ws.id
+        clientId: ws.id,
+        clientCount: room.clients.size
       });
       console.log(`Client ${ws.id} left room ${ws.roomId} (${room.clients.size} clients remaining)`);
     }

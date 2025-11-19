@@ -120,14 +120,14 @@ export const useWebSocket = (
           case 'client-joined':
             setRoomState(prev => ({
               ...prev,
-              clientCount: prev.clientCount + 1,
+              clientCount: message.clientCount,
             }));
             setRoomClients(prev => ({...prev, [message.client.id]: message.client}));
             break;
           case 'client-left':
             setRoomState(prev => ({
               ...prev,
-              clientCount: prev.clientCount - 1,
+              clientCount: message.clientCount,
             }));
             setRoomClients(prev => {
               const newClients = {...prev};
