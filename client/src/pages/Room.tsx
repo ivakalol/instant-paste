@@ -4,7 +4,8 @@ import RoomInfo from '../components/RoomInfo';
 import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
-import { ClipboardItem, WebSocketMessage } from '../types';
+import type { ClipboardItem } from '../types/ClipboardItem';
+import { WebSocketMessage } from '../types/index';
 import '../App.css';
 
 const MAX_HISTORY = 20;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { WebSocketMessage, RoomState } from '../types';
+import { WebSocketMessage, RoomState } from '../types/index';
 import {
   generateE2eeKeyPair,
   getKeyPair,

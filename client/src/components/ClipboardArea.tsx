@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ClipboardItem } from '../types';
+import type { ClipboardItem } from '../types/ClipboardItem';
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
 interface ClipboardAreaProps {
