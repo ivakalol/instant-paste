@@ -23,11 +23,13 @@ function logRoomStatus() {
     log(LOG_LEVELS.INFO, 'No active rooms.');
     return;
   }
-  log(LOG_LEVELS.INFO, `--- Active Rooms Status (${rooms.size} total) ---`);
+  const color = '\x1b[32m'; // Green
+  const reset = '\x1b[0m';
+  log(LOG_LEVELS.INFO, `${color}--- Active Rooms Status (${rooms.size} total) ---${reset}`);
   rooms.forEach((room, roomId) => {
-    log(LOG_LEVELS.INFO, `  Room ID: ${roomId}, Clients: ${room.clients.size}`);
+    log(LOG_LEVELS.INFO, `${color}  Room ID: ${roomId}, Clients: ${room.clients.size}${reset}`);
   });
-  log(LOG_LEVELS.INFO, '-----------------------------------');
+  log(LOG_LEVELS.INFO, `${color}-----------------------------------${reset}`);
 }
 
 const app = express();
