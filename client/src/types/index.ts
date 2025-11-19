@@ -10,6 +10,8 @@ export interface WebSocketMessage {
   timestamp?: number;
   clientId?: string;
   publicKey?: JsonWebKey;
+  fileName?: string;
+  fileSize?: number;
 }
 
 export interface RoomState {
