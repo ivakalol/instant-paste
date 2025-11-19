@@ -444,6 +444,48 @@ body {
     width: 100%;
     justify-content: flex-end;
   }
+
+  /* Features Section adjustments for smaller screens */
+  .features-title {
+    font-size: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .features-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* Try for 2 columns on some phones */
+    gap: 1rem;
+  }
+
+  .feature-item {
+    padding: 1.5rem; /* Reduce padding */
+  }
+
+  .feature-icon {
+    width: 40px; /* Smaller icon container */
+    height: 40px;
+    margin-bottom: 1rem;
+  }
+
+  .feature-icon svg {
+    width: 24px; /* Smaller SVG icon */
+    height: 24px;
+  }
+
+  .feature-item h4 {
+    font-size: 1rem; /* Smaller heading */
+  }
+
+  .feature-item p {
+    font-size: 0.85rem; /* Smaller paragraph text */
+  }
+}
+
+/* For very small screens, ensure single column and further adjustments */
+@media (max-width: 480px) {
+  .features-grid {
+    grid-template-columns: 1fr; /* Force single column on very small screens */
+    gap: 1.5rem;
+  }
 }
 
 /* Scrollbar styling */

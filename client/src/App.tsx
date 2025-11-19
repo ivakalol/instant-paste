@@ -53,7 +53,7 @@ const App: React.FC = () => {
           </div>
           <footer className="footer">
             <p>
-              Instant Paste - Real-time clipboard sync made by master Ivaka |{' '}
+              Ivaka Instant Paste - Real-time clipboard sync made by master Ivaka |{' '}
               <a 
                 href="https://github.com/ivakalol/instant-paste" 
                 target="_blank" 

@@ -30,7 +30,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
 
   return (
     <div className="room-selector">
-      <h1>Instant Paste</h1>
+      <h1>Ivaka Instant Paste</h1>
       <p className="subtitle">Real-time clipboard sync between devices</p>
       
       <div className="room-options">
