@@ -17,6 +17,8 @@ function log(level, message, ...args) {
 }
 
 const ROOM_STATUS_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const INACTIVE_ROOM_CHECK_INTERVAL = 60 * 1000; // 1 minute
+const MAX_ROOM_INACTIVITY = 60 * 60 * 1000; // 1 hour
 
 function logRoomStatus() {
   if (rooms.size === 0) {
@@ -108,46 +110,46 @@ function handleJoin(ws, roomId, publicKey) {
   }
   roomId = roomId.toUpperCase();
   
-  const room = rooms.get(roomId) || { clients: new Map() };
+  const room = rooms.get(roomId) || { clients: new Map(), lastActivity: Date.now() };
   if (!rooms.has(roomId)) {
     rooms.set(roomId, room);
   }
 
   ws.roomId = roomId;
   room.clients.set(ws.id, { ws, publicKey });
+  room.lastActivity = Date.now();
 
   const clientsInRoom = Array.from(room.clients.values()).map(c => ({ id: c.ws.id, publicKey: c.publicKey }));
   
-  ws.send(JSON.stringify({ 
-    type: 'joined', 
+  broadcastToRoom(roomId, {
+    type: 'room-update',
     roomId: roomId,
     clients: clientsInRoom,
-    clientId: ws.id
-  }));
-
-  broadcastToRoom(roomId, { 
-    type: 'client-joined',
-    client: { id: ws.id, publicKey },
     clientCount: room.clients.size
-  }, ws);
+  });
 
   log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Client ${ws.id} joined. Total clients in room: ${room.clients.size}`);
 }
 
 function handleCreate(ws, publicKey) {
   const roomId = generateRoomId();
-  const room = { clients: new Map() };
+  const room = { clients: new Map(), lastActivity: Date.now() };
   rooms.set(roomId, room);
 
   ws.roomId = roomId;
   room.clients.set(ws.id, { ws, publicKey });
 
+  const clientsInRoom = Array.from(room.clients.values()).map(c => ({ id: c.ws.id, publicKey: c.publicKey }));
+
   ws.send(JSON.stringify({
-    type: 'created',
+    type: 'room-update',
     roomId: roomId,
-    clients: [{ id: ws.id, publicKey }],
-    clientId: ws.id
+    clients: clientsInRoom,
+    clientId: ws.id,
+    clientCount: room.clients.size
   }));
+
+  ws.send(JSON.stringify({ type: 'reload' }));
 
   log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Created by client ${ws.id}`);
   logRoomStatus();
@@ -158,15 +160,18 @@ function handleLeave(ws) {
     const room = rooms.get(ws.roomId);
     if (room.clients.has(ws.id)) {
       room.clients.delete(ws.id);
+      room.lastActivity = Date.now();
 
       if (room.clients.size === 0) {
         rooms.delete(ws.roomId);
         log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Deleted (empty)`);
         logRoomStatus();
       } else {
+        const clientsInRoom = Array.from(room.clients.values()).map(c => ({ id: c.ws.id, publicKey: c.publicKey }));
         broadcastToRoom(ws.roomId, {
-          type: 'client-left',
-          clientId: ws.id,
+          type: 'room-update',
+          roomId: ws.roomId,
+          clients: clientsInRoom,
           clientCount: room.clients.size
         });
         log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Client ${ws.id} left. Total clients in room: ${room.clients.size}`);
@@ -180,6 +185,11 @@ function handleClipboard(ws, data) {
   if (!ws.roomId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Not in a room' }));
     return;
+  }
+
+  const room = rooms.get(ws.roomId);
+  if (room) {
+    room.lastActivity = Date.now();
   }
 
   const message = {
@@ -224,6 +234,21 @@ const interval = setInterval(() => {
     }
   });
 }, 30000);
+
+// Check for inactive rooms
+setInterval(() => {
+  const now = Date.now();
+  rooms.forEach((room, roomId) => {
+    if (now - room.lastActivity > MAX_ROOM_INACTIVITY) {
+      log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Shutting down due to inactivity.`);
+      room.clients.forEach(({ ws: client }) => {
+        client.close();
+      });
+      rooms.delete(roomId);
+      logRoomStatus();
+    }
+  });
+}, INACTIVE_ROOM_CHECK_INTERVAL);
 
 wss.on('close', () => {
   clearInterval(interval);

@@ -85,55 +85,25 @@ export const useWebSocket = (
         const message = JSON.parse(event.data);
         
         switch (message.type) {
-          case 'created':
+          case 'room-update':
             setRoomState({
               roomId: message.roomId || null,
               connected: true,
-              clientCount: message.clients?.length || 1,
-              clientId: message.clientId,
+              clientCount: message.clientCount || 0,
+              clientId: message.clientId || roomState.clientId,
             });
             setRoomClients(message.clients.reduce((acc: any, client: any) => {
               acc[client.id] = client;
               return acc;
             }, {}));
-            if (pendingRoomCreation.current) {
-              pendingRoomCreation.current(message.roomId || null);
+            if (pendingRoomCreation.current && message.type === 'room-update' && message.roomId) {
+              pendingRoomCreation.current(message.roomId);
               pendingRoomCreation.current = undefined;
             }
-            break;
-          case 'joined':
-            setRoomState({
-              roomId: message.roomId || null,
-              connected: true,
-              clientCount: message.clients?.length || 1,
-              clientId: message.clientId,
-            });
-            setRoomClients(message.clients.reduce((acc: any, client: any) => {
-              acc[client.id] = client;
-              return acc;
-            }, {}));
             if (pendingRoomJoin.current) {
               pendingRoomJoin.current(true);
               pendingRoomJoin.current = undefined;
             }
-            break;
-          case 'client-joined':
-            setRoomState(prev => ({
-              ...prev,
-              clientCount: message.clientCount,
-            }));
-            setRoomClients(prev => ({...prev, [message.client.id]: message.client}));
-            break;
-          case 'client-left':
-            setRoomState(prev => ({
-              ...prev,
-              clientCount: message.clientCount,
-            }));
-            setRoomClients(prev => {
-              const newClients = {...prev};
-              delete newClients[message.clientId];
-              return newClients;
-            });
             break;
           case 'clipboard':
             if (onClipboardReceivedRef.current) {
@@ -159,6 +129,9 @@ export const useWebSocket = (
               pendingRoomJoin.current = undefined;
             }
             break;
+          case 'reload':
+            window.location.reload();
+            break;
           default:
             console.log('Unknown message type:', message.type);
         }
@@ -166,7 +139,7 @@ export const useWebSocket = (
         console.error('Failed to parse WebSocket message:', error);
       }
     };
-  }, [isE2eeEnabled, keyPair, roomClients]);
+  }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
