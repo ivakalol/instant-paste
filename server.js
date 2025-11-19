@@ -147,12 +147,6 @@ function handleCreate(ws, publicKey) {
     clientId: ws.id
   }));
 
-  broadcastToRoom(roomId, {
-    type: 'client-joined',
-    client: { id: ws.id, publicKey },
-    clientCount: room.clients.size
-  }, ws);
-
   log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Created by client ${ws.id}`);
   logRoomStatus();
 }

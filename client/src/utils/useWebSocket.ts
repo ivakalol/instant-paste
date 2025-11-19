@@ -89,7 +89,7 @@ export const useWebSocket = (
             setRoomState({
               roomId: message.roomId || null,
               connected: true,
-              clientCount: message.clientCount || 1,
+              clientCount: message.clients?.length || 1,
               clientId: message.clientId,
             });
             setRoomClients(message.clients.reduce((acc: any, client: any) => {
