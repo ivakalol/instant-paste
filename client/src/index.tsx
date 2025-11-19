@@ -36,7 +36,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     // Reload the page to use the new assets and logic from the new service worker.
-    window.location.reload();
     refreshing = true;
+    window.location.reload();
   });
 }
