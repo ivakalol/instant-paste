@@ -650,3 +650,40 @@ body {
   color: var(--secondary-color);
   line-height: 1.6;
 }
+
+/* Recent Rooms Section */
+.recent-rooms-section {
+  margin-top: 2.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.recent-rooms-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--secondary-color);
+  margin-bottom: 1.5rem;
+}
+
+.recent-rooms-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.btn-recent {
+  background-color: var(--input-background);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 0.5rem 1rem;
+}
+
+.btn-recent:hover {
+  background-color: var(--border-color);
+  border-color: var(--secondary-color);
+}
+

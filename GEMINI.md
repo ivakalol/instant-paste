@@ -147,7 +147,7 @@ This session focused on enhancing user experience and fixing minor issues.
     *   **Layout and Spacing:** Adjusted spacing between buttons in `ClipboardArea.tsx` for better visual separation.
     *   **RoomSelector Enhancements:** Added a new list item to the "How it works" section in `RoomSelector.tsx` and applied a slight opacity to the text for a softer look.
 *   **Import/Export Corrections:**
-    *   Resolved import/export errors related to `RoomInfo` component by ensuring consistent default exports and imports across `RoomInfo.tsx` and `Room.tsx`.
+    *   Resolved import/export errors related to `RoomInfo` component by ensuring consistent default exports and imports across `Room.tsx` and `Room.tsx`.
 
 ### 8. Current Session (2025-11-18) - Cloudflare Tunnel and Domain Setup
 
@@ -207,7 +207,7 @@ This session focused on significant UI/UX enhancements, resolving critical build
     *   **Layout and Spacing:** Adjusted spacing between buttons in `ClipboardArea.tsx` for better visual separation.
     *   **RoomSelector Enhancements:** Added a new list item to the "How it works" section in `RoomSelector.tsx` and applied a slight opacity to the text for a softer look.
 *   **Import/Export Corrections:**
-    *   Resolved import/export errors related to `RoomInfo` component by ensuring consistent default exports and imports across `RoomInfo.tsx` and `Room.tsx`.
+    *   Resolved import/export errors related to `RoomInfo` component by ensuring consistent default exports and imports across `Room.tsx` and `Room.tsx`.
 
 ### 10. Current Session (2025-11-19) - WebSocket Refactor and Inactive Room Shutdown
 
@@ -231,3 +231,29 @@ This project is primarily developed and tested on a separate device. The Gemini 
 *   **Do NOT execute `npm run` commands:** All build, test, and run commands are handled on the external device.
 *   **Do NOT execute `git push`:** All `git push` operations are handled manually by the user on the external device.
 *   **Testing and Building:** Assume that testing and building will be performed by the user on the external device after code changes are provided.
+
+### 11. Current Session (2025-11-19) - Storage Overhaul and File Handling Improvements
+
+This session focused on overhauling the client-side storage system to support larger files and implementing several new features and improvements related to file handling.
+
+*   **Storage System Overhaul (IndexedDB):**
+    *   Replaced the `localStorage` system with `IndexedDB` to resolve storage quota errors and significantly increase the capacity for clipboard history on the user's device.
+    *   Created a new utility module `client/src/utils/indexedDB.ts` to manage all database interactions.
+    *   Refactored `client/src/pages/Room.tsx` to use the new IndexedDB service for all history persistence (loading, saving, and clearing).
+
+*   **Enhanced File Handling & UX:**
+    *   **Generic File Support:** Implemented the ability to upload any file type, not just images, videos, and text. This involved updating the data model (`ClipboardItem.ts`), server-side message handling (`server.js`), and client-side processing logic (`Room.tsx`, `ClipboardArea.tsx`).
+    *   **File Metadata Display:** Added the file size to the data model and UI. The history now displays the filename and size (e.g., "document.pdf (2.1 MB)") for a better user experience.
+    *   **Large File Upload Gate:** Implemented a password prompt for uploading large files. The threshold for this prompt was adjusted from an initial 50MB to **150MB** based on user feedback for experimentation.
+
+*   **Bug Fixes:**
+    *   Resolved a TypeScript compilation error in `Room.tsx` by updating the shared `WebSocketMessage` interface in `client/src/types/index.ts` to include the new `fileName` and `fileSize` properties.
+
+*   **Technical Discussions:**
+    *   Provided detailed explanations on why `IndexedDB` is the superior choice over `localStorage` or a hybrid approach.
+    *   Clarified how data persistence and deletion works (items are stored locally, not on the server, and are pruned after 30 minutes or when the 20-item history limit is exceeded).
+    *   Explained how to inspect `IndexedDB` data on an Android device using remote debugging via a desktop computer, and clarified that direct on-device inspection is not possible.
+
+*   **Git Commits:**
+    *   All new features, improvements, and fixes were committed to the local `feature/phonestorage` branch.
+    *   Guided the user on how to push a new local branch to a remote repository for the first time.

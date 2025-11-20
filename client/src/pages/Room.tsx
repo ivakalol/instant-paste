@@ -5,6 +5,7 @@ import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
 import { loadHistory, saveHistory, clearHistory } from '../utils/indexedDB';
+import { addRecentRoom } from '../utils/recentRooms';
 import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import '../App.css';
@@ -212,6 +213,9 @@ const Room: React.FC = () => {
   }, [sendMessage, showToast]);
 
   const handleLeaveRoom = () => {
+    if (roomId) {
+      addRecentRoom(roomId);
+    }
     leaveRoom();
     navigate('/');
   };
