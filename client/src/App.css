@@ -333,6 +333,35 @@ body {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
+.file-preview .file-name {
+  color: #3b82f6; /* A nice dark blue */
+  font-weight: 600;
+}
+
+.file-preview.error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--secondary-color);
+}
+
+.download-prompt {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+
+.progress-bar-container {
+  margin-top: 0.5rem;
+}
+
+.progress-text.progress-complete {
+  font-size: 0.8em;
+  color: var(--secondary-color);
+}
+
+
 .item-content {
   flex: 1;
   overflow: hidden;

@@ -20,6 +20,17 @@ const formatBytes = (bytes: number, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+const getFileExtension = (filename: string | undefined) => {
+  if (!filename) return '';
+  return filename.split('.').pop() || '';
+};
+
+const truncateFilename = (filename: string | undefined, length: number = 15) => {
+  if (!filename) return '';
+  if (filename.length <= length) return filename;
+  return filename.substring(0, length) + '...';
+};
+
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
   onFileSelect,
@@ -34,6 +45,36 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<Set<string>>(new Set());
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const completedItems = history.filter(item => 
+      item.status === 'complete' && 
+      item.fileId && 
+      !recentlyCompleted.has(item.id)
+    );
+
+    if (completedItems.length > 0) {
+      const newCompleted = new Set(recentlyCompleted);
+      completedItems.forEach(item => newCompleted.add(item.id));
+      setRecentlyCompleted(newCompleted);
+
+      completedItems.forEach(item => {
+        setTimeout(() => {
+          setRecentlyCompleted(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(item.id);
+            return newSet;
+          });
+        }, 5000); // Show status for 5 seconds
+      });
+    }
+  }, [history, recentlyCompleted]);
+
+  const handleMediaError = (id: string) => {
+    setLoadErrors(prev => new Set(prev).add(id));
+  };
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => {
@@ -218,51 +259,85 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           {history.length === 0 ? (
             <p className="empty-state">No clips yet. Start pasting!</p>
           ) : (
-            history.map((item) => (
-              <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
-                <div className="item-content">
-                  {item.type === 'text' && (
-                    <div className="text-preview">
-                      {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
-                      {item.content.length > 100 && (
-                        <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
-                          {expandedItems.has(item.id) ? '➖ Collapse' : '➕ Expand'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {item.type === 'image' && ( <img src={item.content} alt={item.name || 'Pasted Image'} className="media-preview" /> )}
-                  {item.type === 'video' && ( <video src={item.content} className="media-preview" controls /> )}
-                  {item.type === 'file' && (
-                    <div className="file-preview">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                        <path d="M4 0h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
-                        <path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
-                      </svg>
-                      <span className="file-name">{item.name || 'Untitled File'}</span>
-                      {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
-                    </div>
-                  )}
-                   {item.status && item.status !== 'complete' && (
-                    <div className="progress-bar-container">
-                      {item.progress !== 100 && <progress value={item.progress || 0} max="100" />}
-                      <span className="progress-text">
-                        {item.progress === 100
-                          ? item.status === 'uploading' ? 'Uploaded' : 'Downloaded'
-                          : `${item.status === 'uploading' ? 'Uploading' : 'Downloading'} ${item.progress?.toFixed(0) ?? 0}%`}
-                      </span>
-                    </div>
-                  )}
+            history.map((item) => {
+              const isTransferInProgress = item.status === 'uploading' || item.status === 'downloading';
+              const isRecentlyCompleted = recentlyCompleted.has(item.id);
+
+              return (
+                <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
+                  <div className="item-content">
+                    {item.type === 'text' && (
+                      <div className="text-preview">
+                        {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
+                        {item.content.length > 100 && (
+                          <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
+                            {expandedItems.has(item.id) ? '➖ Collapse' : '➕ Expand'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {item.type === 'image' && (
+                      loadErrors.has(item.id) ? (
+                        <div className="file-preview error">
+                          <span>Preview of <strong>.{getFileExtension(item.name)}</strong> not available.</span>
+                          <span className="download-prompt">Please download <span className="file-name">{truncateFilename(item.name)}</span>.</span>
+                        </div>
+                      ) : (
+                        <img 
+                          src={item.content} 
+                          alt={item.name || 'Pasted Image'} 
+                          className="media-preview" 
+                          onError={() => handleMediaError(item.id)}
+                        />
+                      )
+                    )}
+                    {item.type === 'video' && (
+                       loadErrors.has(item.id) ? (
+                        <div className="file-preview error">
+                          <span>Preview of <strong>.{getFileExtension(item.name)}</strong> not available.</span>
+                          <span className="download-prompt">Please download <span className="file-name">{truncateFilename(item.name)}</span>.</span>
+                        </div>
+                      ) : (
+                        <video 
+                          src={item.content} 
+                          className="media-preview" 
+                          controls 
+                          onError={() => handleMediaError(item.id)}
+                        />
+                      )
+                    )}
+                    {item.type === 'file' && (
+                      <div className="file-preview">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                          <path d="M4 0h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
+                          <path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
+                        </svg>
+                        <span className="file-name">{truncateFilename(item.name)}</span>
+                        {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
+                      </div>
+                    )}
+                     {(isTransferInProgress || isRecentlyCompleted) && (
+                      <div className="progress-bar-container">
+                        {item.progress !== 100 && !isRecentlyCompleted && <progress value={item.progress || 0} max="100" />}
+                        <span className={`progress-text ${item.progress === 100 || isRecentlyCompleted ? 'progress-complete' : ''}`}>
+                          {(item.progress === 100 || isRecentlyCompleted)
+                            // For recently completed downloads, status will be 'complete'. We determine the action based on the 'fileId' which is only present for downloads.
+                            ? (item.status === 'uploading' ? 'Uploaded' : 'Downloaded')
+                            : `${item.status === 'uploading' ? 'Uploading' : 'Downloading'} ${item.progress?.toFixed(0) ?? 0}%`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="item-actions">
+                    <span className="item-type">{item.type}</span>
+                    <span className="item-timestamp">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                    <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">📋</button>
+                    <button onClick={() => handleDownload(item)} className="btn-icon" title="Download" disabled={isTransferInProgress}>💾</button>
+                    <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">🗑️</button>
+                  </div>
                 </div>
-                <div className="item-actions">
-                  <span className="item-type">{item.type}</span>
-                  <span className="item-timestamp">{new Date(item.timestamp).toLocaleTimeString()}</span>
-                  <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">📋</button>
-                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download" disabled={item.status && item.status !== 'complete'}>💾</button>
-                  <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">🗑️</button>
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

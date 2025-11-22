@@ -56,6 +56,7 @@ export const useWebSocket = (
   const [isE2eeEnabled, setIsE2eeEnabled] = useState(window.isSecureContext);
   const [isReady, setIsReady] = useState(false);
   const incomingFiles = useRef<Map<string, IncomingFile>>(new Map());
+  const orphanChunks = useRef<Map<string, WebSocketMessage[]>>(new Map());
 
   const pendingRoomCreation = useRef<(roomId: string | null) => void>();
   const pendingRoomJoin = useRef<(success: boolean) => void>();
@@ -98,19 +99,13 @@ export const useWebSocket = (
 
     let incomingFile = incomingFiles.current.get(message.fileId);
 
-    // Retry mechanism to handle potential race conditions
     if (!incomingFile) {
-        let retries = 0;
-        const maxRetries = 5;
-        while (!incomingFile && retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            incomingFile = incomingFiles.current.get(message.fileId);
-            retries++;
+        // This chunk has arrived before its metadata, store it as an orphan
+        if (!orphanChunks.current.has(message.fileId)) {
+            orphanChunks.current.set(message.fileId, []);
         }
-    }
-    
-    if (!incomingFile) {
-        console.error('Received chunk for unknown file after retries:', message.fileId);
+        orphanChunks.current.get(message.fileId)!.push(message);
+        console.log(`Orphaned chunk for ${message.fileId} received and stored.`);
         return;
     }
 
@@ -191,6 +186,17 @@ export const useWebSocket = (
                         chunks: new Array(message.totalChunks),
                         metadata: message,
                     });
+                    
+                    // Now that metadata is set, process any orphaned chunks that arrived early
+                    if (orphanChunks.current.has(message.fileId)) {
+                        const chunks = orphanChunks.current.get(message.fileId)!;
+                        console.log(`Processing ${chunks.length} orphaned chunks for ${message.fileId}.`);
+                        chunks.sort((a, b) => a.chunkIndex! - b.chunkIndex!); // Ensure order
+                        for (const chunkMsg of chunks) {
+                            await handleFileChunk(chunkMsg);
+                        }
+                        orphanChunks.current.delete(message.fileId);
+                    }
                 }
                 onClipboardReceivedRef.current(message);
             }
