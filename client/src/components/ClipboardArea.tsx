@@ -3,7 +3,8 @@ import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardIt
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 
 interface ClipboardAreaProps {
-  onPaste: (type: string, content: string, name?: string, size?: number) => void;
+  onPaste?: (type: string, content: string, name?: string, size?: number) => void;
+  onFileSelect: (file: File) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -21,6 +22,7 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
+  onFileSelect,
   history,
   encryptionEnabled,
   showToast,
@@ -45,7 +47,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  const processFile = useCallback((file: File) => {
+  const handleFileSelected = (file: File) => {
     const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
     const requiredPassword = "qwerty7654321";
 
@@ -59,46 +61,19 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
       }
     }
-    
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        showToast('Failed to read file: Invalid result type', 'error');
-        return;
-      }
-      if (file.type.startsWith('image/')) {
-        onPaste('image', reader.result, file.name, file.size);
-      } else if (file.type.startsWith('video/')) {
-        onPaste('video', reader.result, file.name, file.size);
-      } else if (file.type.startsWith('text/')) {
-        onPaste('text', reader.result, file.name, file.size);
-      } else {
-        onPaste('file', reader.result, file.name, file.size);
-      }
-    };
-    reader.onerror = () => {
-      console.error('Failed to read file:', reader.error);
-      showToast('Failed to read file. Please try again.', 'error');
-    };
-
-    if (file.type.startsWith('text/')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsDataURL(file);
-    }
-  }, [onPaste, showToast]);
+    onFileSelect(file);
+  }
 
   const processClipboardItem = useCallback((item: DataTransferItem) => {
-    if (item.kind === 'string' && item.type.startsWith('text/')) {
+    if (item.kind === 'string' && item.type.startsWith('text/') && onPaste) {
       item.getAsString((text) => onPaste('text', text));
     } else if (item.kind === 'file') {
       const file = item.getAsFile();
       if (file) {
-        processFile(file);
+        handleFileSelected(file);
       }
     }
-  }, [onPaste, processFile]);
+  }, [onPaste, onFileSelect, showToast]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -127,18 +102,25 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      processFile(files[0]);
+      handleFileSelected(files[0]);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      processFile(files[0]);
+      handleFileSelected(files[0]);
+      // Reset the input so the same file can be selected again
+      e.target.value = '';
     }
   };
 
   const handleCopy = async (item: ClipboardHistoryItem) => {
+    if (item.status && item.status !== 'complete') {
+        showToast('Cannot copy file while it is transferring.', 'info');
+        return;
+    }
+
     if (item.type === 'text') {
       const success = await copyToClipboard(item.content);
       if (success) {
@@ -169,21 +151,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  const getMimeType = (dataUrl: string): string | null => {
-    const match = dataUrl.match(/^data:([^;]+);/);
-    return match ? match[1] : null;
-  };
-
-  const getExtension = (mimeType: string | null, fallback: string): string => {
-    const mimeToExt: Record<string, string> = {
-      'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
-      'video/mp4': 'mp4', 'video/webm': 'webm', 'video/ogg': 'ogv',
-    };
-    return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
-  };
-
   const handleDownload = (item: ClipboardHistoryItem) => {
-    const filename = item.name || `paste-${item.id}.${getExtension(getMimeType(item.content), 'txt')}`;
+    if (item.status && item.status !== 'complete') {
+        showToast('Cannot download file while it is transferring.', 'info');
+        return;
+    }
+    const filename = item.name || `paste-${item.id}.dat`;
     
     if (item.type === 'text' && !item.name) {
       const blob = new Blob([item.content], { type: 'text/plain' });
@@ -196,7 +169,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   };
 
   const handleSendText = () => {
-    if (typedText.trim()) {
+    if (typedText.trim() && onPaste) {
       onPaste('text', typedText);
       setTypedText('');
     }
@@ -234,7 +207,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/></svg>
           Choose File
         </button>
-        <input ref={fileInputRef} type="file" onChange={handleFileSelect} style={{ display: 'none' }} />
+        <input ref={fileInputRef} type="file" onChange={handleFileChange} style={{ display: 'none' }} />
       </div>
 
       {encryptionEnabled && ( <div className="encryption-indicator">🔒 Encryption enabled</div> )}
@@ -270,12 +243,22 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
                     </div>
                   )}
+                   {item.status && item.status !== 'complete' && (
+                    <div className="progress-bar-container">
+                      {item.progress !== 100 && <progress value={item.progress || 0} max="100" />}
+                      <span className="progress-text">
+                        {item.progress === 100
+                          ? item.status === 'uploading' ? 'Uploaded' : 'Downloaded'
+                          : `${item.status === 'uploading' ? 'Uploading' : 'Downloading'} ${item.progress?.toFixed(0) ?? 0}%`}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="item-actions">
                   <span className="item-type">{item.type}</span>
                   <span className="item-timestamp">{new Date(item.timestamp).toLocaleTimeString()}</span>
                   <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">📋</button>
-                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download">💾</button>
+                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download" disabled={item.status && item.status !== 'complete'}>💾</button>
                   <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">🗑️</button>
                 </div>
               </div>

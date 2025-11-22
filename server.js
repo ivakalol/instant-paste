@@ -29,21 +29,24 @@ function logRoomStatus() {
   const reset = '\x1b[0m';
   log(LOG_LEVELS.INFO, `${color}--- Active Rooms Status (${rooms.size} total) ---${reset}`);
   rooms.forEach((room, roomId) => {
-    log(LOG_LEVELS.INFO, `${color}  Room ID: ${roomId}, Clients: ${room.clients.size}${reset}`);
+    const fileTransfers = room.activeTransfers ? room.activeTransfers.size : 0;
+    log(LOG_LEVELS.INFO, `${color}  Room ID: ${roomId}, Clients: ${room.clients.size}, Active File Transfers: ${fileTransfers}${reset}`);
   });
   log(LOG_LEVELS.INFO, `${color}-----------------------------------${reset}`);
 }
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+// Increase maxPayload to handle large messages, though chunking should keep them small.
+const wss = new WebSocket.Server({ server, maxPayload: 2 * 1024 * 1024 }); // 2MB limit
 
 const PORT = process.env.PORT || 3000;
 
 const rooms = new Map();
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+// The express.json limit is for HTTP requests, not WebSocket messages.
+app.use(express.json({ limit: '1gb' }));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 function generateRoomId() {
@@ -80,8 +83,11 @@ wss.on('connection', (ws) => {
         case 'clipboard':
           handleClipboard(ws, data);
           break;
+        case 'file-chunk':
+          handleFileChunk(ws, data);
+          break;
         default:
-          log(LOG_LEVELS.WARN, 'Unknown message type:', data.type);
+          log(LOG_LEVELS.WARN, `[ROOM ${ws.roomId}] Unknown message type from ${ws.id}:`, data.type);
       }
     } catch (error) {
       log(LOG_LEVELS.ERROR, 'Error handling message:', error);
@@ -110,7 +116,7 @@ function handleJoin(ws, roomId, publicKey) {
   }
   roomId = roomId.toUpperCase();
   
-  const room = rooms.get(roomId) || { clients: new Map(), lastActivity: Date.now() };
+  const room = rooms.get(roomId) || { clients: new Map(), lastActivity: Date.now(), activeTransfers: new Map() };
   if (!rooms.has(roomId)) {
     rooms.set(roomId, room);
   }
@@ -133,7 +139,7 @@ function handleJoin(ws, roomId, publicKey) {
 
 function handleCreate(ws, publicKey) {
   const roomId = generateRoomId();
-  const room = { clients: new Map(), lastActivity: Date.now() };
+  const room = { clients: new Map(), lastActivity: Date.now(), activeTransfers: new Map() };
   rooms.set(roomId, room);
 
   ws.roomId = roomId;
@@ -162,6 +168,16 @@ function handleLeave(ws) {
       room.clients.delete(ws.id);
       room.lastActivity = Date.now();
 
+      // Cancel any active file transfers from the disconnected client
+      if (room.activeTransfers.has(ws.id)) {
+        const fileIds = room.activeTransfers.get(ws.id);
+        fileIds.forEach(fileId => {
+          log(LOG_LEVELS.WARN, `[ROOM ${ws.roomId}] Cancelling file transfer ${fileId} from disconnected client ${ws.id}`);
+          broadcastToRoom(ws.roomId, { type: 'file-cancel', fileId: fileId, senderId: ws.id });
+        });
+        room.activeTransfers.delete(ws.id);
+      }
+
       if (room.clients.size === 0) {
         rooms.delete(ws.roomId);
         log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Deleted (empty)`);
@@ -188,37 +204,56 @@ function handleClipboard(ws, data) {
   }
 
   const room = rooms.get(ws.roomId);
+  if (!room) return;
+  room.lastActivity = Date.now();
+
+  const message = {
+    ...data,
+    senderId: ws.id,
+    timestamp: Date.now()
+  };
+
+  // If it's a file transfer, track it.
+  if (data.fileId) {
+    if (!room.activeTransfers.has(ws.id)) {
+      room.activeTransfers.set(ws.id, new Set());
+    }
+    room.activeTransfers.get(ws.id).add(data.fileId);
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Started file transfer ${data.fileId} from ${ws.id}`);
+  }
+
+  log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Relaying '${data.type}' from ${ws.id}`);
+  broadcastToRoom(ws.roomId, message, ws);
+}
+
+function handleFileChunk(ws, data) {
+  if (!ws.roomId || !data.fileId) {
+    return;
+  }
+  const room = rooms.get(ws.roomId);
   if (room) {
     room.lastActivity = Date.now();
   }
 
   const message = {
-    type: 'clipboard',
-    contentType: data.contentType,
+    ...data,
     senderId: ws.id,
-    timestamp: Date.now()
   };
-
-  // Add fileName if it exists
-  if (data.fileName) {
-    message.fileName = data.fileName;
-  }
-
-  // Add fileSize if it exists
-  if (data.fileSize !== undefined) {
-    message.fileSize = data.fileSize;
-  }
-
-  if (data.encryptedContent) {
-    message.encryptedContent = data.encryptedContent;
-    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Encrypted clipboard data relayed from ${ws.id}`);
-  } else {
-    message.content = data.content;
-    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Unencrypted clipboard data relayed from ${ws.id}`);
+  
+  // Clean up transfer tracking when the last chunk is sent
+  if (data.chunkIndex === data.totalChunks - 1) {
+    if (room && room.activeTransfers.has(ws.id)) {
+      room.activeTransfers.get(ws.id).delete(data.fileId);
+      if (room.activeTransfers.get(ws.id).size === 0) {
+        room.activeTransfers.delete(ws.id);
+      }
+    }
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Finished file transfer ${data.fileId} from ${ws.id}`);
   }
 
   broadcastToRoom(ws.roomId, message, ws);
 }
+
 
 function broadcastToRoom(roomId, data, excludeWs = null) {
   const room = rooms.get(roomId);
@@ -236,6 +271,7 @@ function broadcastToRoom(roomId, data, excludeWs = null) {
 const interval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
+      log(LOG_LEVELS.WARN, `[WS] Terminating unresponsive client ${ws.id}`);
       handleLeave(ws);
       ws.terminate();
     } else {
