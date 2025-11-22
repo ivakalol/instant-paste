@@ -12,7 +12,7 @@ This is a real-time clipboard synchronization web application called "Instant Pa
 
 **Architecture:**
 
-The application follows a client-server architecture. The backend server manages "rooms" that clients can create or join. When a client sends clipboard data, the server broadcasts it to all other clients in the same room. All data is end-to-end encrypted, meaning the server cannot read the content. The frontend is a single-page application (SPA) that communicates with the backend via WebSockets. Clipboard history is stored locally in the browser's `localStorage`.
+The application follows a client-server architecture. The backend server manages "rooms" that clients can create or join. When a client sends clipboard data, the server broadcasts it to all other clients in the same room. All data is end-to-end encrypted, meaning the server cannot read the content. The frontend is a single-page application (SPA) that communicates with the backend via WebSockets. Clipboard history is stored locally in the browser's `IndexedDB` for large capacity, with `localStorage` being used for theme preferences and the recent rooms list.
 
 # Building and Running
 
@@ -257,3 +257,19 @@ This session focused on overhauling the client-side storage system to support la
 *   **Git Commits:**
     *   All new features, improvements, and fixes were committed to the local `feature/phonestorage` branch.
     *   Guided the user on how to push a new local branch to a remote repository for the first time.
+
+### 12. Current Session (2025-11-20) - Recently Visited Rooms
+
+This session focused on adding a quality-of-life feature to help users quickly rejoin rooms.
+
+*   **"Recently Visited Rooms" Feature:**
+    *   Implemented a new feature that displays a list of up to 5 recently visited rooms on the homepage (`RoomSelector.tsx`).
+    *   This list is stored in the browser's `localStorage`.
+    *   Created a new utility module `client/src/utils/recentRooms.ts` to manage this list.
+    *   The list is updated whenever a user creates, joins, or leaves a room, ensuring the most recently used rooms are always at the top.
+    *   Added a feature, as requested by the user, to perform a full page reload (`window.location.reload()`) when a user joins a room from this list.
+*   **Code Refinements:**
+    *   Added CSS to `App.css` to style the new section.
+    *   Reverted an unintentional change in `client/src/utils/useWebSocket.ts` related to the WebSocket reconnection delay.
+*   **Git Commits:**
+    *   All new features and fixes were committed to the local `feature/phonestorage` branch.
