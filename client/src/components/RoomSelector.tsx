@@ -33,6 +33,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
       if (success) {
         addRecentRoom(roomToJoin);
         navigate(`/${roomToJoin}`);
+        window.location.reload();
       }
     }
   };

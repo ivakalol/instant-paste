@@ -32,14 +32,7 @@ interface IncomingFile {
   metadata: WebSocketMessage;
 }
 
-// Safely encode binary data to Base64
-function btoa(binary: string): string {
-  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
-    return window.btoa(binary);
-  }
-  // Fallback for non-browser environments (e.g., server-side testing)
-  return Buffer.from(binary, 'binary').toString('base64');
-}
+
 
 export const useWebSocket = (
   onClipboardReceived?: (message: WebSocketMessage) => void,
@@ -103,27 +96,29 @@ export const useWebSocket = (
   const handleFileChunk = useCallback(async (message: WebSocketMessage) => {
     if (!message.fileId || !message.chunk) return;
 
-    const incomingFile = incomingFiles.current.get(message.fileId);
+    let incomingFile = incomingFiles.current.get(message.fileId);
+
+    // Retry mechanism to handle potential race conditions
     if (!incomingFile) {
-        console.error('Received chunk for unknown file:', message.fileId);
+        let retries = 0;
+        const maxRetries = 5;
+        while (!incomingFile && retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            incomingFile = incomingFiles.current.get(message.fileId);
+            retries++;
+        }
+    }
+    
+    if (!incomingFile) {
+        console.error('Received chunk for unknown file after retries:', message.fileId);
         return;
     }
 
-    let chunk = message.chunk;
-    if (isE2eeEnabled && keyPair && message.encryptedContent) {
-        const sender = roomClients[message.senderId!];
-        if (sender?.publicKey) {
-            const decryptedChunk = await decryptFrom(message.encryptedContent, keyPair.privateKey, sender.publicKey);
-            if (decryptedChunk) {
-                chunk = decryptedChunk;
-            } else {
-                console.error("Failed to decrypt chunk");
-                // Notify of failure
-                onFileTransferUpdateRef.current?.({ type: 'file-error', fileId: message.fileId, message: 'Decryption failed' });
-                incomingFiles.current.delete(message.fileId);
-                return;
-            }
-        }
+    const chunk = message.chunk;
+    
+    if (typeof chunk !== 'string') {
+        console.error('Chunk is not a string:', message.fileId);
+        return;
     }
 
     incomingFile.chunks[message.chunkIndex!] = chunk;
@@ -136,24 +131,32 @@ export const useWebSocket = (
     });
 
     if (incomingFile.chunks.filter(Boolean).length === message.totalChunks) {
-        const base64String = incomingFile.chunks.join('');
-        const byteCharacters = atob(base64String);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: incomingFile.metadata.fileType });
-        const contentUrl = URL.createObjectURL(blob);
+        try {
+            const byteArrays = incomingFile.chunks.map(base64Chunk => {
+                const byteCharacters = atob(base64Chunk);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                return new Uint8Array(byteNumbers);
+            });
 
-        onFileTransferUpdateRef.current?.({
-            type: 'file-complete',
-            fileId: message.fileId,
-            content: contentUrl,
-        });
-        incomingFiles.current.delete(message.fileId);
+            const blob = new Blob(byteArrays, { type: incomingFile.metadata.fileType });
+            const contentUrl = URL.createObjectURL(blob);
+
+            onFileTransferUpdateRef.current?.({
+                type: 'file-complete',
+                fileId: message.fileId,
+                content: contentUrl,
+            });
+        } catch (error) {
+            console.error("Error reassembling file:", error);
+            onFileTransferUpdateRef.current?.({ type: 'file-error', fileId: message.fileId, message: 'File reassembly failed' });
+        } finally {
+            incomingFiles.current.delete(message.fileId);
+        }
     }
-  }, [keyPair, isE2eeEnabled, roomClients]);
+  }, []);
 
   useEffect(() => {
     onMessageRef.current = async (event: MessageEvent) => {
@@ -273,20 +276,14 @@ export const useWebSocket = (
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       let messageToSend: WebSocketMessage = { ...message };
       
-      const isChunk = message.type === 'file-chunk' && message.chunk;
       const isText = message.type === 'clipboard' && !message.fileId && message.content;
 
-      if (isE2eeEnabled && keyPair && roomState.clientId && (isText || isChunk)) {
+      if (isE2eeEnabled && keyPair && roomState.clientId && isText) {
         const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
         if (recipients.length > 0 && recipients[0].publicKey) {
-          const contentToEncrypt = isText ? message.content! : message.chunk!;
+          const contentToEncrypt = message.content!;
           const encryptedContent = await encryptFor(contentToEncrypt, keyPair.privateKey, recipients[0].publicKey);
-          
-          if (isText) {
-            messageToSend = { ...message, content: undefined, encryptedContent };
-          } else { // isChunk
-            messageToSend = { ...message, chunk: undefined, encryptedContent };
-          }
+          messageToSend = { ...message, content: undefined, encryptedContent };
         }
       }
       ws.current.send(JSON.stringify(messageToSend));
@@ -298,6 +295,7 @@ export const useWebSocket = (
   const uploadFile = useCallback(async (file: File, fileId: string) => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
+    // Send file start message
     await sendMessage({
       type: 'clipboard',
       contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
@@ -308,17 +306,19 @@ export const useWebSocket = (
       totalChunks: totalChunks,
     });
     
+    // Send file chunks
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
       const chunk = file.slice(start, end);
       
       const reader = new FileReader();
-      reader.readAsBinaryString(chunk);
+      reader.readAsDataURL(chunk);
       
       await new Promise<void>((resolve, reject) => {
         reader.onload = async () => {
-          const base64Chunk = btoa(reader.result as string);
+          const dataUrl = reader.result as string;
+          const base64Chunk = dataUrl.split(',')[1];
           const sent = await sendMessage({
             type: 'file-chunk',
             fileId: fileId,
@@ -355,8 +355,11 @@ export const useWebSocket = (
   const joinRoom = useCallback((roomId: string): Promise<boolean> => {
     return new Promise((resolve) => {
       pendingRoomJoin.current = resolve;
-      const message: WebSocketMessage = { type: 'join', roomId };
-      if (isE2eeEnabled && keyPair) message.publicKey = keyPair.publicKey;
+      const message: WebSocketMessage = {
+        type: 'join',
+        roomId,
+        ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
+      };
       ws.current?.send(JSON.stringify(message));
     });
   }, [keyPair, isE2eeEnabled]);
