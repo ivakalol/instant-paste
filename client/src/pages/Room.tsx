@@ -225,14 +225,30 @@ const Room: React.FC = () => {
   const handleFileSelect = useCallback((file: File) => {
     const fileId = `${Date.now()}-${file.name}`;
     let fileType: ClipboardItem['type'] = 'file';
-    if (file.type.startsWith('image/')) fileType = 'image';
-    if (file.type.startsWith('video/')) fileType = 'video';
+    const majorType = file.type.split('/')[0];
+
+    switch (majorType) {
+      case 'image':
+        fileType = 'image';
+        break;
+      case 'video':
+        fileType = 'video';
+        break;
+      case 'audio':
+        fileType = 'audio';
+        break;
+      case 'application':
+        fileType = 'application';
+        break;
+      default:
+        fileType = 'file';
+    }
     
     const newItem: ClipboardItem = {
       id: fileId,
       fileId: fileId,
       type: fileType,
-      content: '', // Placeholder, will be filled upon completion
+      content: URL.createObjectURL(file), // Use objectURL for immediate local preview
       name: file.name,
       size: file.size,
       timestamp: Date.now(),

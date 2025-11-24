@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
-import { copyToClipboard, downloadFile } from '../utils/clipboard';
+import { copyToClipboard, downloadFile, truncateFilename } from '../utils/clipboard';
+import FilePreview from './FilePreview';
 
 interface ClipboardAreaProps {
   onPaste?: (type: string, content: string, name?: string, size?: number) => void;
@@ -10,26 +11,6 @@ interface ClipboardAreaProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
 }
-
-const formatBytes = (bytes: number, decimals = 2) => {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-};
-
-const getFileExtension = (filename: string | undefined) => {
-  if (!filename) return '';
-  return filename.split('.').pop() || '';
-};
-
-const truncateFilename = (filename: string | undefined, length: number = 15) => {
-  if (!filename) return '';
-  if (filename.length <= length) return filename;
-  return filename.substring(0, length) + '...';
-};
 
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
@@ -266,7 +247,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
               return (
                 <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
                   <div className="item-content">
-                    {item.type === 'text' && (
+                    {item.type === 'text' ? (
                       <div className="text-preview">
                         {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
                         {item.content.length > 100 && (
@@ -275,48 +256,14 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                           </button>
                         )}
                       </div>
+                    ) : (
+                      <FilePreview 
+                        item={item} 
+                        onMediaError={handleMediaError}
+                        loadErrors={loadErrors}
+                      />
                     )}
-                    {item.type === 'image' && (
-                      loadErrors.has(item.id) ? (
-                        <div className="file-preview error">
-                          <span>Preview of <strong>.{getFileExtension(item.name)}</strong> not available.</span>
-                          <span className="download-prompt">Please download <span className="file-name">{truncateFilename(item.name)}</span>.</span>
-                        </div>
-                      ) : (
-                        <img 
-                          src={item.content} 
-                          alt={item.name || 'Pasted Image'} 
-                          className="media-preview" 
-                          onError={() => handleMediaError(item.id)}
-                        />
-                      )
-                    )}
-                    {item.type === 'video' && (
-                       loadErrors.has(item.id) ? (
-                        <div className="file-preview error">
-                          <span>Preview of <strong>.{getFileExtension(item.name)}</strong> not available.</span>
-                          <span className="download-prompt">Please download <span className="file-name">{truncateFilename(item.name)}</span>.</span>
-                        </div>
-                      ) : (
-                        <video 
-                          src={item.content} 
-                          className="media-preview" 
-                          controls 
-                          onError={() => handleMediaError(item.id)}
-                        />
-                      )
-                    )}
-                    {item.type === 'file' && (
-                      <div className="file-preview">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                          <path d="M4 0h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H4z"/>
-                          <path d="M4.5 12.5A.5.5 0 0 1 5 12h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
-                        </svg>
-                        <span className="file-name">{truncateFilename(item.name)}</span>
-                        {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
-                      </div>
-                    )}
-                     {(isTransferInProgress || isRecentlyCompleted) && (
+                    {(isTransferInProgress || isRecentlyCompleted) && (
                       <div className="progress-bar-container">
                         {item.progress !== 100 && !isRecentlyCompleted && <progress value={item.progress || 0} max="100" />}
                         <span className={`progress-text ${item.progress === 100 || isRecentlyCompleted ? 'progress-complete' : ''}`}>

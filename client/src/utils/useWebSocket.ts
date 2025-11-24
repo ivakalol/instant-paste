@@ -138,6 +138,7 @@ export const useWebSocket = (
 
             const blob = new Blob(byteArrays, { type: incomingFile.metadata.fileType });
             const contentUrl = URL.createObjectURL(blob);
+            console.log(`[useWebSocket] File complete: fileId=${message.fileId}, fileType=${incomingFile.metadata.fileType}, contentUrl=${contentUrl}`);
 
             onFileTransferUpdateRef.current?.({
                 type: 'file-complete',
@@ -304,7 +305,7 @@ export const useWebSocket = (
     // Send file start message
     await sendMessage({
       type: 'clipboard',
-      contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
+      contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
       fileId: fileId,
       fileName: file.name,
       fileSize: file.size,

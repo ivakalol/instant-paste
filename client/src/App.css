@@ -338,14 +338,6 @@ body {
   font-weight: 600;
 }
 
-.file-preview.error {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-  color: var(--secondary-color);
-}
-
 .download-prompt {
   font-size: 0.85rem;
   color: var(--text-color-secondary);
@@ -501,11 +493,16 @@ body {
   }
 
   .feature-item h4 {
-    font-size: 1rem; /* Smaller heading */
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
   }
 
   .feature-item p {
-    font-size: 0.85rem; /* Smaller paragraph text */
+    font-size: 0.95rem;
+    color: var(--secondary-color);
+    line-height: 1.6;
   }
 }
 
@@ -715,4 +712,3 @@ body {
   background-color: var(--border-color);
   border-color: var(--secondary-color);
 }
-
