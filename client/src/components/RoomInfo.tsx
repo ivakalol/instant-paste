@@ -117,7 +117,8 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
       </div>
       {showQrCode && roomState.roomId && (
         <QRCodeModal
-          roomUrl={getRoomUrl()}
+          isOpen={showQrCode}
+          url={getRoomUrl()}
           onClose={() => setShowQrCode(false)}
         />
       )}

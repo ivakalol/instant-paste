@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getRecentRooms, addRecentRoom } from '../utils/recentRooms';
 
 interface RoomSelectorProps {
   onCreateRoom: () => Promise<string | null>;
@@ -9,23 +10,38 @@ interface RoomSelectorProps {
 
 const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, isReady }) => {
   const [roomId, setRoomId] = useState('');
+  const [recentRooms, setRecentRooms] = useState<string[]>([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setRecentRooms(getRecentRooms());
+  }, []);
 
   const handleCreate = async () => {
     const newRoomId = await onCreateRoom();
     if (newRoomId) {
+      addRecentRoom(newRoomId);
       navigate(`/${newRoomId}`);
     }
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (roomId.trim()) {
-      const success = await onJoinRoom(roomId.trim().toUpperCase());
+    const roomToJoin = roomId.trim().toUpperCase();
+    if (roomToJoin) {
+      const success = await onJoinRoom(roomToJoin);
       if (success) {
-        navigate(`/${roomId.trim().toUpperCase()}`);
+        addRecentRoom(roomToJoin);
+        navigate(`/${roomToJoin}`);
+        window.location.reload();
       }
     }
+  };
+
+  const handleJoinRecent = (recentRoomId: string) => {
+    addRecentRoom(recentRoomId);
+    navigate(`/${recentRoomId}`);
+    window.location.reload();
   };
 
   return (
@@ -56,6 +72,23 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           </button>
         </form>
       </div>
+
+      {recentRooms.length > 0 && (
+        <div className="recent-rooms-section">
+          <h3 className="recent-rooms-title">Recently Visited</h3>
+          <div className="recent-rooms-list">
+            {recentRooms.map((recentRoomId) => (
+              <button
+                key={recentRoomId}
+                onClick={() => handleJoinRecent(recentRoomId)}
+                className="btn btn-recent"
+              >
+                {recentRoomId}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       
       <div className="features-section">
         <h3 className="features-title">How It Works</h3>

@@ -4,49 +4,42 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: rgba(0, 0, 0, 0.7);
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   z-index: 1000;
 }
 
 .modal-content {
-  background-color: var(--card-background);
-  padding: 2rem;
-  border-radius: 12px;
+  background-color: var(--background-color);
+  padding: 20px;
+  border-radius: 8px;
   text-align: center;
+  position: relative;
   max-width: 90%;
   width: 400px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--border-color);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
 
-.modal-content h2 {
-  margin-top: 0;
-  margin-bottom: 1rem;
-  color: var(--text-color);
+.modal-close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
   font-size: 1.5rem;
-  font-weight: 600;
+  color: var(--text-color);
+  cursor: pointer;
 }
 
 .qrcode-container {
-  margin: 1.5rem 0;
-  padding: 1rem;
-  background-color: var(--qr-code-bg);
-  border-radius: 8px;
-  display: inline-block;
-  border: 1px solid var(--border-color);
+  margin: 20px 0;
 }
 
-.room-url {
-  word-break: break-all;
-  margin-bottom: 1.5rem;
-  font-family: monospace;
-  background: var(--input-background);
-  color: var(--secondary-color);
-  padding: 0.75rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  border: 1px solid var(--border-color);
+.modal-url {
+  word-wrap: break-word;
+  color: var(--text-color-secondary);
+  font-size: 0.9rem;
+  margin-top: 15px;
 }

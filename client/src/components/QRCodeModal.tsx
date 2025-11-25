@@ -3,22 +3,25 @@ import { QRCodeCanvas } from 'qrcode.react';
 import './QRCodeModal.css';
 
 interface QRCodeModalProps {
-  roomUrl: string;
+  isOpen: boolean;
   onClose: () => void;
+  url: string;
 }
 
-const QRCodeModal: React.FC<QRCodeModalProps> = ({ roomUrl, onClose }) => {
+const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose, url }) => {
+  if (!isOpen) {
+    return null;
+  }
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-button" onClick={onClose}>&times;</button>
         <h2>Scan to Join Room</h2>
         <div className="qrcode-container">
-          <QRCodeCanvas value={roomUrl} size={256} />
+          <QRCodeCanvas value={url} size={256} />
         </div>
-        <p className="room-url">{roomUrl}</p>
-        <button onClick={onClose} className="btn btn-secondary">
-          Close
-        </button>
+        <p className="modal-url">{url}</p>
       </div>
     </div>
   );

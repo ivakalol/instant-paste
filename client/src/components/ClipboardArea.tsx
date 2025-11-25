@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
-import { copyToClipboard, downloadFile } from '../utils/clipboard';
+import { copyToClipboard, downloadFile, truncateFilename } from '../utils/clipboard';
+import FilePreview from './FilePreview';
 
 interface ClipboardAreaProps {
-  onPaste: (type: string, content: string) => void;
+  onPaste?: (type: string, content: string, name?: string, size?: number) => void;
+  onFileSelect: (file: File) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -12,6 +14,7 @@ interface ClipboardAreaProps {
 
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
+  onFileSelect,
   history,
   encryptionEnabled,
   showToast,
@@ -23,6 +26,36 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<Set<string>>(new Set());
+  const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const completedItems = history.filter(item => 
+      item.status === 'complete' && 
+      item.fileId && 
+      !recentlyCompleted.has(item.id)
+    );
+
+    if (completedItems.length > 0) {
+      const newCompleted = new Set(recentlyCompleted);
+      completedItems.forEach(item => newCompleted.add(item.id));
+      setRecentlyCompleted(newCompleted);
+
+      completedItems.forEach(item => {
+        setTimeout(() => {
+          setRecentlyCompleted(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(item.id);
+            return newSet;
+          });
+        }, 5000); // Show status for 5 seconds
+      });
+    }
+  }, [history, recentlyCompleted]);
+
+  const handleMediaError = (id: string) => {
+    setLoadErrors(prev => new Set(prev).add(id));
+  };
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems(prev => {
@@ -36,73 +69,39 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  // Helper function to read and process files
-  const processFile = useCallback((file: File) => {
-    // Validate file size before reading (50MB limit for base64-encoded content)
-    // For text: 50MB text limit
-    // For binary (images/videos): 37.5MB original file = ~50MB base64
-    const MAX_SIZE = file.type.startsWith('text/') ? 50 * 1024 * 1024 : 37.5 * 1024 * 1024;
-    
-    if (file.size > MAX_SIZE) {
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      const maxMB = (MAX_SIZE / (1024 * 1024)).toFixed(1);
-      showToast(`File too large (${sizeMB}MB). Maximum size is ${maxMB}MB.`, 'error');
-      return;
-    }
-    
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        showToast('Failed to read file: Invalid result type', 'error');
+  const handleFileSelected = (file: File) => {
+    const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
+    const requiredPassword = "qwerty7654321";
+
+    if (file.size > passwordPromptSize) {
+      const enteredPassword = prompt(`This file is larger than 150MB. Please enter the password to proceed:`);
+      if (enteredPassword === null) {
         return;
       }
-      if (file.type.startsWith('image/')) {
-        onPaste('image', reader.result);
-      } else if (file.type.startsWith('video/')) {
-        onPaste('video', reader.result);
-      } else if (file.type.startsWith('text/')) {
-        onPaste('text', reader.result);
+      if (enteredPassword !== requiredPassword) {
+        showToast('Incorrect password.', 'error');
+        return;
       }
-    };
-    reader.onerror = () => {
-      console.error('Failed to read file:', reader.error);
-      showToast('Failed to read file. Please try again.', 'error');
-    };
-
-    if (file.type.startsWith('text/')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsDataURL(file);
     }
-  }, [onPaste, showToast]);
+    onFileSelect(file);
+  }
 
-  // Helper function to process clipboard items
   const processClipboardItem = useCallback((item: DataTransferItem) => {
-    if (item.type.startsWith('text/')) {
-      item.getAsString((text) => {
-        onPaste('text', text);
-      });
-    } else if (item.type.startsWith('image/')) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processFile(blob);
-      }
-    } else if (item.type.startsWith('video/')) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processFile(blob);
+    if (item.kind === 'string' && item.type.startsWith('text/') && onPaste) {
+      item.getAsString((text) => onPaste('text', text));
+    } else if (item.kind === 'file') {
+      const file = item.getAsFile();
+      if (file) {
+        handleFileSelected(file);
       }
     }
-  }, [onPaste, processFile]);
+  }, [onPaste, onFileSelect, showToast]);
 
   useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
+    const handlePaste = (e: ClipboardEvent) => {
       e.preventDefault();
-      
       const items = e.clipboardData?.items;
       if (!items) return;
-
       for (let i = 0; i < items.length; i++) {
         processClipboardItem(items[i]);
       }
@@ -120,24 +119,30 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     };
   }, [processClipboardItem]);
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      processFile(files[0]);
+      handleFileSelected(files[0]);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      processFile(files[0]);
+      handleFileSelected(files[0]);
+      // Reset the input so the same file can be selected again
+      e.target.value = '';
     }
   };
 
   const handleCopy = async (item: ClipboardHistoryItem) => {
+    if (item.status && item.status !== 'complete') {
+        showToast('Cannot copy file while it is transferring.', 'info');
+        return;
+    }
+
     if (item.type === 'text') {
       const success = await copyToClipboard(item.content);
       if (success) {
@@ -155,11 +160,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       try {
         const response = await fetch(item.content);
         const blob = await response.blob();
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            [blob.type]: blob,
-          }),
-        ]);
+        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
         showToast('Image copied to clipboard!', 'success');
         setCopiedItemId(item.id);
         setTimeout(() => setCopiedItemId(null), 1000);
@@ -172,36 +173,14 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  // Helper to extract MIME type from data URL
-  const getMimeType = (dataUrl: string): string | null => {
-    const match = dataUrl.match(/^data:([^;]+);/);
-    return match ? match[1] : null;
-  };
-
-  // Helper to map MIME type to file extension
-  const getExtension = (mimeType: string | null, fallback: string): string => {
-    const mimeToExt: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/png': 'png',
-      'image/gif': 'gif',
-      'image/webp': 'webp',
-      'video/mp4': 'mp4',
-      'video/webm': 'webm',
-      'video/ogg': 'ogv',
-      // add more mappings as needed
-    };
-    return mimeType && mimeToExt[mimeType] ? mimeToExt[mimeType] : fallback;
-  };
-
   const handleDownload = (item: ClipboardHistoryItem) => {
-    let ext = 'txt';
-    if (item.type === 'image' || item.type === 'video') {
-      const mimeType = getMimeType(item.content);
-      ext = getExtension(mimeType, item.type === 'image' ? 'png' : 'mp4');
+    if (item.status && item.status !== 'complete') {
+        showToast('Cannot download file while it is transferring.', 'info');
+        return;
     }
-    const filename = `paste-${item.id}.${ext}`;
+    const filename = item.name || `paste-${item.id}.dat`;
     
-    if (item.type === 'text') {
+    if (item.type === 'text' && !item.name) {
       const blob = new Blob([item.content], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       downloadFile(url, filename);
@@ -212,14 +191,13 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   };
 
   const handleSendText = () => {
-    if (typedText.trim()) {
+    if (typedText.trim() && onPaste) {
       onPaste('text', typedText);
       setTypedText('');
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Send on Ctrl+Enter or Cmd+Enter
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSendText();
@@ -235,10 +213,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         value={typedText}
         onChange={(e) => setTypedText(e.target.value)}
         onKeyDown={handleKeyDown}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         rows={10}
@@ -246,41 +221,18 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       />
       
       <div className="actions">
-        <button 
-          onClick={handleSendText}
-          className="btn btn-primary"
-          disabled={!typedText.trim()}
-          style={{ marginRight: '10px' }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11zM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493z"/>
-          </svg>
+        <button onClick={handleSendText} className="btn btn-primary" disabled={!typedText.trim()} style={{ marginRight: '10px' }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11zM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493z"/></svg>
           Send Text
         </button>
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="btn btn-secondary"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/>
-            <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/>
-          </svg>
+        <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/></svg>
           Choose File
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          onChange={handleFileSelect}
-          accept="image/*,video/*,text/*"
-          style={{ display: 'none' }}
-        />
+        <input ref={fileInputRef} type="file" onChange={handleFileChange} style={{ display: 'none' }} />
       </div>
 
-      {encryptionEnabled && (
-        <div className="encryption-indicator">
-          🔒 Encryption enabled
-        </div>
-      )}
+      {encryptionEnabled && ( <div className="encryption-indicator">🔒 Encryption enabled</div> )}
 
       <div className="history">
         <h3>Recent Clips ({history.length})</h3>
@@ -288,43 +240,51 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           {history.length === 0 ? (
             <p className="empty-state">No clips yet. Start pasting!</p>
           ) : (
-            history.map((item) => (
-              <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
-                <div className="item-content">
-                  {item.type === 'text' && (
-                    <div className="text-preview">
-                      {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
-                      {item.content.length > 100 && (
-                        <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
-                          {expandedItems.has(item.id) ? '➖ Collapse' : '➕ Expand'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {item.type === 'image' && (
-                    <img src={item.content} alt="Pasted" className="media-preview" />
-                  )}
-                  {item.type === 'video' && (
-                    <video src={item.content} className="media-preview" controls />
-                  )}
+            history.map((item) => {
+              const isTransferInProgress = item.status === 'uploading' || item.status === 'downloading';
+              const isRecentlyCompleted = recentlyCompleted.has(item.id);
+
+              return (
+                <div key={item.id} className={`history-item ${copiedItemId === item.id ? 'copied-flash' : ''}`}>
+                  <div className="item-content">
+                    {item.type === 'text' ? (
+                      <div className="text-preview">
+                        {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
+                        {item.content.length > 100 && (
+                          <button onClick={() => toggleExpand(item.id)} className="btn-icon btn-small">
+                            {expandedItems.has(item.id) ? '➖ Collapse' : '➕ Expand'}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <FilePreview 
+                        item={item} 
+                        onMediaError={handleMediaError}
+                        loadErrors={loadErrors}
+                      />
+                    )}
+                    {(isTransferInProgress || isRecentlyCompleted) && (
+                      <div className="progress-bar-container">
+                        {item.progress !== 100 && !isRecentlyCompleted && <progress value={item.progress || 0} max="100" />}
+                        <span className={`progress-text ${item.progress === 100 || isRecentlyCompleted ? 'progress-complete' : ''}`}>
+                          {(item.progress === 100 || isRecentlyCompleted)
+                            // For recently completed downloads, status will be 'complete'. We determine the action based on the 'fileId' which is only present for downloads.
+                            ? (item.status === 'uploading' ? 'Uploaded' : 'Downloaded')
+                            : `${item.status === 'uploading' ? 'Uploading' : 'Downloading'} ${item.progress?.toFixed(0) ?? 0}%`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="item-actions">
+                    <span className="item-type">{item.type}</span>
+                    <span className="item-timestamp">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                    <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">📋</button>
+                    <button onClick={() => handleDownload(item)} className="btn-icon" title="Download" disabled={isTransferInProgress}>💾</button>
+                    <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">🗑️</button>
+                  </div>
                 </div>
-                <div className="item-actions">
-                  <span className="item-type">{item.type}</span>
-                  <span className="item-timestamp">
-                    {new Date(item.timestamp).toLocaleTimeString()}
-                  </span>
-                  <button onClick={() => handleCopy(item)} className="btn-icon" title="Copy">
-                    📋
-                  </button>
-                  <button onClick={() => handleDownload(item)} className="btn-icon" title="Download">
-                    💾
-                  </button>
-                  <button onClick={() => onDeleteItem(item.id)} className="btn-icon btn-danger" title="Delete">
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

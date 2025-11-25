@@ -51,3 +51,14 @@ export const getClipboardData = async (): Promise<ClipboardItems | null> => {
   }
   return null;
 };
+
+export const getFileExtension = (filename: string | undefined) => {
+    if (!filename) return '';
+    return filename.split('.').pop()?.toLowerCase() || '';
+};
+  
+export const truncateFilename = (filename: string | undefined, length: number = 15) => {
+    if (!filename) return '';
+    if (filename.length <= length) return filename;
+    return filename.substring(0, length) + '...';
+};

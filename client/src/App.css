@@ -333,6 +333,27 @@ body {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
+.file-preview .file-name {
+  color: #3b82f6; /* A nice dark blue */
+  font-weight: 600;
+}
+
+.download-prompt {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+
+.progress-bar-container {
+  margin-top: 0.5rem;
+}
+
+.progress-text.progress-complete {
+  font-size: 0.8em;
+  color: var(--secondary-color);
+}
+
+
 .item-content {
   flex: 1;
   overflow: hidden;
@@ -472,11 +493,16 @@ body {
   }
 
   .feature-item h4 {
-    font-size: 1rem; /* Smaller heading */
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
   }
 
   .feature-item p {
-    font-size: 0.85rem; /* Smaller paragraph text */
+    font-size: 0.95rem;
+    color: var(--secondary-color);
+    line-height: 1.6;
   }
 }
 
@@ -649,4 +675,40 @@ body {
   font-size: 0.95rem;
   color: var(--secondary-color);
   line-height: 1.6;
+}
+
+/* Recent Rooms Section */
+.recent-rooms-section {
+  margin-top: 2.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.recent-rooms-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--secondary-color);
+  margin-bottom: 1.5rem;
+}
+
+.recent-rooms-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.btn-recent {
+  background-color: var(--input-background);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 0.5rem 1rem;
+}
+
+.btn-recent:hover {
+  background-color: var(--border-color);
+  border-color: var(--secondary-color);
 }

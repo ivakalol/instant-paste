@@ -4,6 +4,8 @@ import RoomInfo from '../components/RoomInfo';
 import ClipboardArea from '../components/ClipboardArea';
 import Toast from '../components/Toast';
 import { useWebSocket } from '../utils/useWebSocket';
+import { loadHistory, saveHistory, clearHistory } from '../utils/indexedDB';
+import { addRecentRoom } from '../utils/recentRooms';
 import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import '../App.css';
@@ -19,6 +21,7 @@ const Room: React.FC = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const [history, setHistory] = useState<ClipboardItem[]>([]);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
   const [autoCopyEnabled, setAutoCopyEnabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const lastAutoCopyRef = useRef<number>(0);
@@ -67,9 +70,6 @@ const Room: React.FC = () => {
     textArea.focus();
     textArea.select();
     try {
-      // Fallback for browsers (e.g., Firefox) that do not support the asynchronous Clipboard API.
-      // document.execCommand('copy') is deprecated, but still required for compatibility due to stricter clipboard security policies.
-      // Prefer using navigator.clipboard.writeText when available.
       const successful = document.execCommand('copy');
       if (successful) {
         showToast('Text auto-copied to clipboard', 'success');
@@ -83,14 +83,39 @@ const Room: React.FC = () => {
     document.body.removeChild(textArea);
   }, [showToast]);
 
+  const handleFileTransferUpdate = useCallback((update: WebSocketMessage) => {
+    setHistory(prev => prev.map(item => {
+      if (item.fileId === update.fileId) {
+        const newItem = { ...item };
+        if (update.type === 'file-progress') {
+          newItem.progress = update.progress;
+        } else if (update.type === 'file-complete') {
+          newItem.status = 'complete';
+          newItem.content = update.content!;
+          newItem.progress = 100;
+        } else if (update.type === 'file-error') {
+          showToast(`File transfer failed: ${update.message}`, 'error');
+          return null; // remove from history
+        }
+        return newItem;
+      }
+      return item;
+    }).filter(Boolean) as ClipboardItem[]);
+  }, [showToast]);
+
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
-    if (message.type === 'clipboard' && message.contentType && message.content) {
+    if (message.type === 'clipboard' && message.contentType && (message.content || message.fileId)) {
       const newItem: ClipboardItem = {
-        id: Date.now().toString(),
-        type: message.contentType as 'text' | 'image' | 'video',
-        content: message.content,
+        id: message.fileId || Date.now().toString(),
+        fileId: message.fileId,
+        type: message.contentType as ClipboardItem['type'],
+        content: message.content || '',
         timestamp: message.timestamp || Date.now(),
-        encrypted: true, // E2EE is always on
+        name: message.fileName,
+        size: message.fileSize,
+        encrypted: true,
+        status: message.fileId ? 'downloading' : 'complete',
+        progress: message.fileId ? 0 : 100,
       };
 
       setHistory(prev => {
@@ -98,59 +123,49 @@ const Room: React.FC = () => {
         return updated;
       });
 
-      if (autoCopyEnabled && message.contentType === 'text' && message.content) {
+      if (autoCopyEnabled && newItem.status === 'complete' && message.contentType === 'text' && message.content) {
         const now = Date.now();
         if (now - lastAutoCopyRef.current > 2000) {
           lastAutoCopyRef.current = now;
           if (navigator.clipboard && window.isSecureContext) {
             navigator.clipboard.writeText(message.content)
-              .then(() => {
-                showToast('Text auto-copied to clipboard', 'success');
-              })
+              .then(() => showToast('Text auto-copied to clipboard', 'success'))
               .catch((err) => {
                 console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
-                if (message.content) {
-                  copyTextToClipboard(message.content);
-                }
+                copyTextToClipboard(message.content!);
               });
           } else {
-            if (message.content) {
-              copyTextToClipboard(message.content);
-            }
+            copyTextToClipboard(message.content!);
           }
-        } else {
-          console.log('Auto-copy rate limited, skipping...');
         }
       }
     }
   }, [autoCopyEnabled, showToast, copyTextToClipboard]);
 
-
-  const { roomState, sendMessage, leaveRoom, isE2eeEnabled } = useWebSocket(
+  const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled } = useWebSocket(
     handleClipboardReceived,
+    handleFileTransferUpdate,
     roomId
   );
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem(`clipboardHistory_${roomId}`);
-    if (savedHistory) {
+    if (!roomId) return;
+    const fetchHistory = async () => {
       try {
-        const parsed = JSON.parse(savedHistory);
-        if (Array.isArray(parsed) && parsed.every(item => 
-          item && typeof item === 'object' && 
-          'type' in item && 'content' in item && 'timestamp' in item
-        )) {
-          setHistory(parsed);
-        } else {
-          console.warn('Invalid history format in localStorage, clearing...');
-          localStorage.removeItem(`clipboardHistory_${roomId}`);
+        const savedHistory = await loadHistory(roomId);
+        if (savedHistory && Array.isArray(savedHistory)) {
+          // Filter out any incomplete transfers from previous sessions
+          setHistory(savedHistory.filter(item => item.status === 'complete' || !item.status));
         }
       } catch (error) {
-        console.error('Failed to load history:', error);
-        localStorage.removeItem(`clipboardHistory_${roomId}`);
+        console.error('Failed to load history from IndexedDB:', error);
+        showToast('Could not load history.', 'error');
+      } finally {
+        setIsHistoryLoaded(true);
       }
-    }
-  }, [roomId]);
+    };
+    fetchHistory();
+  }, [roomId, showToast]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -163,34 +178,42 @@ const Room: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
+    if (!roomId || !isHistoryLoaded) return;
+  
+    const timeoutId = setTimeout(async () => {
       try {
-        localStorage.setItem(`clipboardHistory_${roomId}`, JSON.stringify(history));
-      } catch (e) {
-        console.error('Failed to save history to localStorage:', e);
-        showToast('Storage quota exceeded. History not saved.', 'error');
+        // Only save completed items to persistent storage
+        const historyToSave = history.filter(item => item.status === 'complete' || !item.status);
+        await saveHistory(roomId, historyToSave);
+      } catch (error) {
+        console.error('Failed to save history to IndexedDB:', error);
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          showToast('Storage quota exceeded. History not saved.', 'error');
+        } else {
+          showToast('Failed to save history.', 'error');
+        }
       }
     }, 1000);
+  
     return () => clearTimeout(timeoutId);
-  }, [history, roomId, showToast]);
+  }, [history, roomId, showToast, isHistoryLoaded]);
 
   const handlePaste = useCallback(async (type: string, content: string) => {
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
-      type: type as 'text' | 'image' | 'video',
+      type: 'text',
       content,
       timestamp: Date.now(),
       encrypted: true,
+      status: 'complete',
+      progress: 100,
     };
 
-    setHistory(prev => {
-      const updated = [newItem, ...prev].slice(0, MAX_HISTORY);
-      return updated;
-    });
+    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
 
     const sent = await sendMessage({
       type: 'clipboard',
-      contentType: type,
+      contentType: 'text',
       content: content,
     });
 
@@ -199,7 +222,54 @@ const Room: React.FC = () => {
     }
   }, [sendMessage, showToast]);
 
+  const handleFileSelect = useCallback((file: File) => {
+    const fileId = `${Date.now()}-${file.name}`;
+    let fileType: ClipboardItem['type'] = 'file';
+    const majorType = file.type.split('/')[0];
+
+    switch (majorType) {
+      case 'image':
+        fileType = 'image';
+        break;
+      case 'video':
+        fileType = 'video';
+        break;
+      case 'audio':
+        fileType = 'audio';
+        break;
+      case 'application':
+        fileType = 'application';
+        break;
+      default:
+        fileType = 'file';
+    }
+    
+    const newItem: ClipboardItem = {
+      id: fileId,
+      fileId: fileId,
+      type: fileType,
+      content: URL.createObjectURL(file), // Use objectURL for immediate local preview
+      name: file.name,
+      size: file.size,
+      timestamp: Date.now(),
+      encrypted: true,
+      status: 'uploading',
+      progress: 0,
+    };
+
+    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+
+    if (uploadFile) {
+      uploadFile(file, fileId);
+    } else {
+       showToast('File upload is not available.', 'error');
+    }
+  }, [uploadFile, showToast]);
+
   const handleLeaveRoom = () => {
+    if (roomId) {
+      addRecentRoom(roomId);
+    }
     leaveRoom();
     navigate('/');
   };
@@ -209,12 +279,17 @@ const Room: React.FC = () => {
     showToast('Clip deleted from history', 'info');
   }, [showToast]);
 
-  const handleClearAll = useCallback(() => {
+  const handleClearAll = useCallback(async () => {
     setHistory([]);
     if (roomId) {
-      localStorage.removeItem(`clipboardHistory_${roomId}`);
+      try {
+        await clearHistory(roomId);
+        showToast('All clips have been deleted from history', 'info');
+      } catch (error) {
+        console.error('Failed to clear history from IndexedDB:', error);
+        showToast('Could not clear history.', 'error');
+      }
     }
-    showToast('All clips have been deleted from history', 'info');
   }, [roomId, showToast]);
 
   return (
@@ -230,6 +305,7 @@ const Room: React.FC = () => {
       />
       <ClipboardArea 
         onPaste={handlePaste}
+        onFileSelect={handleFileSelect}
         history={history}
         encryptionEnabled={isE2eeEnabled}
         showToast={showToast}

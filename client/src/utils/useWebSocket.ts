@@ -9,9 +9,12 @@ import {
   E2eeKeyPair,
 } from './e2ee';
 
+const CHUNK_SIZE = 1024 * 1024; // 1MB
+
 interface UseWebSocketReturn {
   roomState: RoomState;
   sendMessage: (message: WebSocketMessage) => Promise<boolean>;
+  uploadFile?: (file: File, fileId: string) => void;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -24,13 +27,22 @@ interface RoomClient {
   publicKey?: JsonWebKey;
 }
 
+interface IncomingFile {
+  chunks: string[];
+  metadata: WebSocketMessage;
+}
+
+
+
 export const useWebSocket = (
   onClipboardReceived?: (message: WebSocketMessage) => void,
+  onFileTransferUpdate?: (update: WebSocketMessage) => void,
   initialRoomId?: string
 ): UseWebSocketReturn => {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const onClipboardReceivedRef = useRef(onClipboardReceived);
+  const onFileTransferUpdateRef = useRef(onFileTransferUpdate);
   const reconnectAttemptRef = useRef<number>(0);
   
   const [roomState, setRoomState] = useState<RoomState>({
@@ -43,6 +55,8 @@ export const useWebSocket = (
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
   const [isE2eeEnabled, setIsE2eeEnabled] = useState(window.isSecureContext);
   const [isReady, setIsReady] = useState(false);
+  const incomingFiles = useRef<Map<string, IncomingFile>>(new Map());
+  const orphanChunks = useRef<Map<string, WebSocketMessage[]>>(new Map());
 
   const pendingRoomCreation = useRef<(roomId: string | null) => void>();
   const pendingRoomJoin = useRef<(success: boolean) => void>();
@@ -51,7 +65,8 @@ export const useWebSocket = (
 
   useEffect(() => {
     onClipboardReceivedRef.current = onClipboardReceived;
-  }, [onClipboardReceived]);
+    onFileTransferUpdateRef.current = onFileTransferUpdate;
+  }, [onClipboardReceived, onFileTransferUpdate]);
 
   useEffect(() => {
     const initKeyPair = async () => {
@@ -79,10 +94,70 @@ export const useWebSocket = (
     initKeyPair();
   }, []);
 
+  const handleFileChunk = useCallback(async (message: WebSocketMessage) => {
+    if (!message.fileId || !message.chunk) return;
+
+    let incomingFile = incomingFiles.current.get(message.fileId);
+
+    if (!incomingFile) {
+        // This chunk has arrived before its metadata, store it as an orphan
+        if (!orphanChunks.current.has(message.fileId)) {
+            orphanChunks.current.set(message.fileId, []);
+        }
+        orphanChunks.current.get(message.fileId)!.push(message);
+        console.log(`Orphaned chunk for ${message.fileId} received and stored.`);
+        return;
+    }
+
+    const chunk = message.chunk;
+    
+    if (typeof chunk !== 'string') {
+        console.error('Chunk is not a string:', message.fileId);
+        return;
+    }
+
+    incomingFile.chunks[message.chunkIndex!] = chunk;
+    
+    const progress = (incomingFile.chunks.filter(Boolean).length / message.totalChunks!) * 100;
+    onFileTransferUpdateRef.current?.({
+        type: 'file-progress',
+        fileId: message.fileId,
+        progress: progress,
+    });
+
+    if (incomingFile.chunks.filter(Boolean).length === message.totalChunks) {
+        try {
+            const byteArrays = incomingFile.chunks.map(base64Chunk => {
+                const byteCharacters = atob(base64Chunk);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                return new Uint8Array(byteNumbers);
+            });
+
+            const blob = new Blob(byteArrays, { type: incomingFile.metadata.fileType });
+            const contentUrl = URL.createObjectURL(blob);
+            console.log(`[useWebSocket] File complete: fileId=${message.fileId}, fileType=${incomingFile.metadata.fileType}, contentUrl=${contentUrl}`);
+
+            onFileTransferUpdateRef.current?.({
+                type: 'file-complete',
+                fileId: message.fileId,
+                content: contentUrl,
+            });
+        } catch (error) {
+            console.error("Error reassembling file:", error);
+            onFileTransferUpdateRef.current?.({ type: 'file-error', fileId: message.fileId, message: 'File reassembly failed' });
+        } finally {
+            incomingFiles.current.delete(message.fileId);
+        }
+    }
+  }, []);
+
   useEffect(() => {
     onMessageRef.current = async (event: MessageEvent) => {
       try {
-        const message = JSON.parse(event.data);
+        const message: WebSocketMessage = JSON.parse(event.data);
         
         switch (message.type) {
           case 'room-update':
@@ -96,7 +171,7 @@ export const useWebSocket = (
               acc[client.id] = client;
               return acc;
             }, {}));
-            if (pendingRoomCreation.current && message.type === 'room-update' && message.roomId) {
+            if (pendingRoomCreation.current && message.roomId) {
               pendingRoomCreation.current(message.roomId);
               pendingRoomCreation.current = undefined;
             }
@@ -107,26 +182,38 @@ export const useWebSocket = (
             break;
           case 'clipboard':
             if (onClipboardReceivedRef.current) {
-              if (isE2eeEnabled && keyPair && message.encryptedContent) {
-                const sender = roomClients[message.senderId];
-                if (sender?.publicKey) {
-                  const decryptedContent = await decryptFrom(message.encryptedContent, keyPair.privateKey, sender.publicKey);
-                  if (decryptedContent) {
-                    onClipboardReceivedRef.current({ ...message, content: decryptedContent });
-                  } else {
-                    console.error("Failed to decrypt message");
-                  }
+                if(message.fileId) { // This is the start of a file transfer
+                    incomingFiles.current.set(message.fileId, {
+                        chunks: new Array(message.totalChunks),
+                        metadata: message,
+                    });
+                    
+                    // Now that metadata is set, process any orphaned chunks that arrived early
+                    if (orphanChunks.current.has(message.fileId)) {
+                        const chunks = orphanChunks.current.get(message.fileId)!;
+                        console.log(`Processing ${chunks.length} orphaned chunks for ${message.fileId}.`);
+                        chunks.sort((a, b) => a.chunkIndex! - b.chunkIndex!); // Ensure order
+                        for (const chunkMsg of chunks) {
+                            await handleFileChunk(chunkMsg);
+                        }
+                        orphanChunks.current.delete(message.fileId);
+                    }
                 }
-              } else if (message.content) { // Handle non-E2EE messages
                 onClipboardReceivedRef.current(message);
-              }
             }
+            break;
+          case 'file-chunk':
+            await handleFileChunk(message);
             break;
           case 'error':
             console.error('WebSocket error:', message.message);
             if (pendingRoomJoin.current) {
               pendingRoomJoin.current(false);
               pendingRoomJoin.current = undefined;
+            }
+            if (message.fileId && onFileTransferUpdateRef.current) {
+              onFileTransferUpdateRef.current({ type: 'file-error', fileId: message.fileId, message: message.message });
+              incomingFiles.current.delete(message.fileId);
             }
             break;
           case 'reload':
@@ -139,7 +226,7 @@ export const useWebSocket = (
         console.error('Failed to parse WebSocket message:', error);
       }
     };
-  }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
+  }, [handleFileChunk, roomState.clientId]);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -156,10 +243,8 @@ export const useWebSocket = (
         const joinMessage: WebSocketMessage = {
           type: 'join',
           roomId: initialRoomId,
+          ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
         };
-        if (isE2eeEnabled && keyPair) {
-          joinMessage.publicKey = keyPair.publicKey;
-        }
         ws.current?.send(JSON.stringify(joinMessage));
       }
     };
@@ -197,32 +282,79 @@ export const useWebSocket = (
   const sendMessage = useCallback(async (message: WebSocketMessage): Promise<boolean> => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       let messageToSend: WebSocketMessage = { ...message };
+      
+      const isText = message.type === 'clipboard' && !message.fileId && message.content;
 
-      if (message.type === 'clipboard') {
-        if (isE2eeEnabled && keyPair && roomState.clientId) {
-          const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
-          if (recipients.length > 0 && recipients[0].publicKey) {
-            // This is still not ideal for group chat, but it's a fix for 1-to-1
-            const encryptedContent = await encryptFor(message.content!, keyPair.privateKey, recipients[0].publicKey);
-            messageToSend = { ...message, content: undefined, encryptedContent };
-          }
+      if (isE2eeEnabled && keyPair && roomState.clientId && isText) {
+        const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
+        if (recipients.length > 0 && recipients[0].publicKey) {
+          const contentToEncrypt = message.content!;
+          const encryptedContent = await encryptFor(contentToEncrypt, keyPair.privateKey, recipients[0].publicKey);
+          messageToSend = { ...message, content: undefined, encryptedContent };
         }
-        // If E2EE is disabled, messageToSend will have the original `content`
       }
-
       ws.current.send(JSON.stringify(messageToSend));
       return true;
     }
     return false;
   }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
 
+  const uploadFile = useCallback(async (file: File, fileId: string) => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    // Send file start message
+    await sendMessage({
+      type: 'clipboard',
+      contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
+      fileId: fileId,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      totalChunks: totalChunks,
+    });
+    
+    // Send file chunks
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+      
+      const reader = new FileReader();
+      reader.readAsDataURL(chunk);
+      
+      await new Promise<void>((resolve, reject) => {
+        reader.onload = async () => {
+          const dataUrl = reader.result as string;
+          const base64Chunk = dataUrl.split(',')[1];
+          const sent = await sendMessage({
+            type: 'file-chunk',
+            fileId: fileId,
+            chunkIndex: i,
+            totalChunks: totalChunks,
+            chunk: base64Chunk,
+          });
+          if (sent) {
+            const progress = ((i + 1) / totalChunks) * 100;
+            onFileTransferUpdateRef.current?.({ type: 'file-progress', fileId, progress });
+            resolve();
+          } else {
+            onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'WebSocket disconnected' });
+            reject(new Error('Failed to send chunk'));
+          }
+        };
+        reader.onerror = () => {
+          onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'Failed to read file chunk' });
+          reject(new Error('Failed to read chunk'));
+        };
+      });
+    }
+  }, [sendMessage]);
+
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {
       pendingRoomCreation.current = resolve;
-      const message = {
-        type: 'create',
-        ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
-      };
+      const message: WebSocketMessage = { type: 'create' };
+      if (isE2eeEnabled && keyPair) message.publicKey = keyPair.publicKey;
       ws.current?.send(JSON.stringify(message));
     });
   }, [keyPair, isE2eeEnabled]);
@@ -230,7 +362,7 @@ export const useWebSocket = (
   const joinRoom = useCallback((roomId: string): Promise<boolean> => {
     return new Promise((resolve) => {
       pendingRoomJoin.current = resolve;
-      const message = {
+      const message: WebSocketMessage = {
         type: 'join',
         roomId,
         ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
@@ -248,6 +380,7 @@ export const useWebSocket = (
   return {
     roomState,
     sendMessage,
+    uploadFile,
     createRoom,
     joinRoom,
     leaveRoom,
