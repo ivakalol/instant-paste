@@ -2,6 +2,10 @@
 
 Real-time clipboard sync web app – instantly share text, images, and videos between any devices via browser.
 
+Check my version on https://ivaka-website.me 
+It is running fully on my server (an android phone running Linux)
+Every data is encrypted on your side, and only encrypted data is transferred. 
+
 ## Features ✨
 
 - **Real-time sync**: Instantly share clipboard content between devices
@@ -277,3 +281,4 @@ Ivaylo Chernev
 ## Acknowledgments 🙏
 
 Inspired by [copypaste.me](https://copypaste.me/) with enhanced features for full clipboard support.
+
