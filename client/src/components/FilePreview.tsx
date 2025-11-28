@@ -37,7 +37,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
       <div className="file-preview generating">
         <div className="generating-preview">
           <div className="spinner" />
-          <span>Generating preview...</span>
+          <span>Thumbnail loading...</span>
         </div>
         <div className="file-info">
           <span className="file-name">{truncateFilename(item.name)}</span>

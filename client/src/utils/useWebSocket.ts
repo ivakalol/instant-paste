@@ -179,9 +179,14 @@ export const useWebSocket = (
               pendingRoomJoin.current = undefined;
             }
             break;
+          case 'file-start':
+            if (onClipboardReceivedRef.current) {
+              onClipboardReceivedRef.current(message);
+            }
+            break;
           case 'clipboard':
             if (onClipboardReceivedRef.current) {
-                if(message.fileId) { // This is the start of a file transfer
+                if(message.fileId && message.totalChunks) { // This is the metadata for a file transfer
                     incomingFiles.current.set(message.fileId, {
                         chunks: new Array(message.totalChunks),
                         metadata: message,
@@ -300,8 +305,17 @@ export const useWebSocket = (
 
   const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    
+    // Announce the file transfer first
+    await sendMessage({
+      type: 'file-start',
+      fileId: fileId,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+    });
 
-    // Send file start message
+    // Send the clipboard message with the preview and full metadata
     await sendMessage({
       type: 'clipboard',
       contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
