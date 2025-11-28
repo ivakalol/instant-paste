@@ -41,8 +41,8 @@ export const createImageThumbnail = (file: File, maxWidth: number, maxHeight: nu
       };
       img.src = e.target?.result as string;
     };
-    reader.onerror = (err) => {
-      return reject(err);
+    reader.onerror = () => {
+      return reject(new Error('Failed to read image file for thumbnail generation'));
     };
     reader.readAsDataURL(file);
   });
