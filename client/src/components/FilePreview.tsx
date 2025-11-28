@@ -19,14 +19,15 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadErrors }) => {
   useEffect(() => {
-    // Revoke object URLs when the component unmounts or item.content changes
-    const previousContent = item.content;
+    // This effect should only run once to register the cleanup function.
+    // The cleanup function will be called when the component unmounts.
+    const contentToRevoke = item.content;
     return () => {
-      if (previousContent && previousContent.startsWith('blob:')) {
-        URL.revokeObjectURL(previousContent);
+      if (contentToRevoke && contentToRevoke.startsWith('blob:')) {
+        URL.revokeObjectURL(contentToRevoke);
       }
     };
-  }, [item.content]);
+  }, []);
 
   const fileExtension = getFileExtension(item.name);
 
