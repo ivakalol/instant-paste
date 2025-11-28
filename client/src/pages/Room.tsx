@@ -264,7 +264,7 @@ const Room: React.FC = () => {
         console.warn('Could not create thumbnail for image:', error);
     }
     
-    // For local display, use the high-res object URL initially if no thumbnail, or the thumbnail if available.
+    // For local display, use the thumbnail if available, otherwise create a blob URL from the original file.
     // The full file will be available for download regardless.
     const localPreviewUrl = previewContent || URL.createObjectURL(file);
 
