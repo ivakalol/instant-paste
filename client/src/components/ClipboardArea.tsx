@@ -258,6 +258,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       </div>
                     ) : (
                       <FilePreview 
+                        key={item.id + item.content}
                         item={item} 
                         onMediaError={handleMediaError}
                         loadErrors={loadErrors}
