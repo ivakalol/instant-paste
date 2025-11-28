@@ -12,15 +12,14 @@ export const createImageThumbnail = (file: File, maxWidth: number, maxHeight: nu
         const canvas = document.createElement('canvas');
         let { width, height } = img;
 
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
+        const aspectRatio = width / height;
+        if (width > maxWidth || height > maxHeight) {
+          if (width / maxWidth > height / maxHeight) {
             width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
+            height = maxWidth / aspectRatio;
+          } else {
             height = maxHeight;
+            width = maxHeight * aspectRatio;
           }
         }
 
