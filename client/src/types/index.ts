@@ -21,6 +21,7 @@ export interface WebSocketMessage {
   chunkIndex?: number;
   totalChunks?: number;
   progress?: number; // 0-100
+  previewContent?: string; // Base64 encoded thumbnail
 }
 
 export interface RoomState {

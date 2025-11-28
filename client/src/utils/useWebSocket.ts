@@ -5,7 +5,6 @@ import {
   getKeyPair,
   storeKeyPair,
   encryptFor,
-  decryptFrom,
   E2eeKeyPair,
 } from './e2ee';
 
@@ -14,7 +13,7 @@ const CHUNK_SIZE = 1024 * 1024; // 1MB
 interface UseWebSocketReturn {
   roomState: RoomState;
   sendMessage: (message: WebSocketMessage) => Promise<boolean>;
-  uploadFile?: (file: File, fileId: string) => void;
+  uploadFile?: (file: File, fileId: string, previewContent?: string) => void;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -299,7 +298,7 @@ export const useWebSocket = (
     return false;
   }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
 
-  const uploadFile = useCallback(async (file: File, fileId: string) => {
+  const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
     // Send file start message
@@ -311,6 +310,7 @@ export const useWebSocket = (
       fileSize: file.size,
       fileType: file.type,
       totalChunks: totalChunks,
+      previewContent: previewContent,
     });
     
     // Send file chunks
