@@ -32,7 +32,7 @@ export const saveHistory = async (roomId: string, history: any[]): Promise<void>
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const record: HistoryRecord = { roomId, history };
-    const request = store.put(record);
+    store.put(record);
 
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error || new Error('Failed to save history to IndexedDB.'));
