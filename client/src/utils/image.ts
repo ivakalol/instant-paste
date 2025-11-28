@@ -31,7 +31,10 @@ export const createImageThumbnail = (file: File, maxWidth: number, maxHeight: nu
           return reject(new Error('Could not get canvas context.'));
         }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL(file.type)); // Use original file type for quality
+        // Use original file type for quality if supported; otherwise, fall back to JPEG
+        const supportedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        const mimeType = supportedTypes.includes(file.type) ? file.type : 'image/jpeg';
+        resolve(canvas.toDataURL(mimeType));
       };
       img.onerror = (err) => {
         return reject(err);
