@@ -36,8 +36,8 @@ export const createImageThumbnail = (file: File, maxWidth: number, maxHeight: nu
         const mimeType = supportedTypes.includes(file.type) ? file.type : 'image/jpeg';
         resolve(canvas.toDataURL(mimeType));
       };
-      img.onerror = (err) => {
-        return reject(err);
+      img.onerror = () => {
+        return reject(new Error('Failed to load image for thumbnail generation'));
       };
       img.src = e.target?.result as string;
     };
