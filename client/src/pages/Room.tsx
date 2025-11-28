@@ -8,9 +8,12 @@ import { loadHistory, saveHistory, clearHistory } from '../utils/indexedDB';
 import { addRecentRoom } from '../utils/recentRooms';
 import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
+import { createImageThumbnail } from '../utils/image';
 import '../App.css';
 
 const MAX_HISTORY = 20;
+const THUMBNAIL_MAX_WIDTH = 200;
+const THUMBNAIL_MAX_HEIGHT = 200;
 
 interface ToastState {
   message: string;
@@ -90,6 +93,10 @@ const Room: React.FC = () => {
         if (update.type === 'file-progress') {
           newItem.progress = update.progress;
         } else if (update.type === 'file-complete') {
+          // Revoke old blob url if it exists and is a blob url
+          if (newItem.content && newItem.content.startsWith('blob:')) {
+            URL.revokeObjectURL(newItem.content);
+          }
           newItem.status = 'complete';
           newItem.content = update.content!;
           newItem.progress = 100;
@@ -104,12 +111,12 @@ const Room: React.FC = () => {
   }, [showToast]);
 
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
-    if (message.type === 'clipboard' && message.contentType && (message.content || message.fileId)) {
+    if (message.type === 'clipboard' && message.contentType && (message.content || message.fileId || message.previewContent)) {
       const newItem: ClipboardItem = {
         id: message.fileId || Date.now().toString(),
         fileId: message.fileId,
         type: message.contentType as ClipboardItem['type'],
-        content: message.content || '',
+        content: message.previewContent || message.content || '',
         timestamp: message.timestamp || Date.now(),
         name: message.fileName,
         size: message.fileSize,
@@ -119,6 +126,10 @@ const Room: React.FC = () => {
       };
 
       setHistory(prev => {
+        // Avoid adding duplicates
+        if (prev.some(item => item.id === newItem.id)) {
+            return prev;
+        }
         const updated = [newItem, ...prev].slice(0, MAX_HISTORY);
         return updated;
       });
@@ -222,7 +233,7 @@ const Room: React.FC = () => {
     }
   }, [sendMessage, showToast]);
 
-  const handleFileSelect = useCallback((file: File) => {
+  const handleFileSelect = useCallback(async (file: File) => {
     const fileId = `${Date.now()}-${file.name}`;
     let fileType: ClipboardItem['type'] = 'file';
     const majorType = file.type.split('/')[0];
@@ -244,11 +255,24 @@ const Room: React.FC = () => {
         fileType = 'file';
     }
     
+    let previewContent: string | undefined = undefined;
+    try {
+        if (fileType === 'image') {
+            previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
+        }
+    } catch (error) {
+        console.warn('Could not create thumbnail for image:', error);
+    }
+    
+    // For local display, use the high-res object URL initially if no thumbnail, or the thumbnail if available.
+    // The full file will be available for download regardless.
+    const localPreviewUrl = previewContent || URL.createObjectURL(file);
+
     const newItem: ClipboardItem = {
       id: fileId,
       fileId: fileId,
       type: fileType,
-      content: URL.createObjectURL(file), // Use objectURL for immediate local preview
+      content: localPreviewUrl,
       name: file.name,
       size: file.size,
       timestamp: Date.now(),
@@ -260,7 +284,8 @@ const Room: React.FC = () => {
     setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
 
     if (uploadFile) {
-      uploadFile(file, fileId);
+        // Pass the preview content along with the file metadata
+        await uploadFile(file, fileId, previewContent);
     } else {
        showToast('File upload is not available.', 'error');
     }
@@ -275,12 +300,24 @@ const Room: React.FC = () => {
   };
 
   const handleDeleteItem = useCallback((id: string) => {
-    setHistory(prev => prev.filter(item => item.id !== id));
+    setHistory(prev => prev.filter(item => {
+        if (item.id === id && item.content && item.content.startsWith('blob:')) {
+            URL.revokeObjectURL(item.content);
+        }
+        return item.id !== id;
+    }));
     showToast('Clip deleted from history', 'info');
   }, [showToast]);
 
   const handleClearAll = useCallback(async () => {
-    setHistory([]);
+    setHistory(prev => {
+        prev.forEach(item => {
+            if (item.content && item.content.startsWith('blob:')) {
+                URL.revokeObjectURL(item.content);
+            }
+        });
+        return [];
+    });
     if (roomId) {
       try {
         await clearHistory(roomId);
