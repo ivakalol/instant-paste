@@ -30,6 +30,22 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
 
   const fileExtension = getFileExtension(item.name);
 
+  // Show loading indicator while thumbnail is being generated
+  if (item.status === 'generating') {
+    return (
+      <div className="file-preview generating">
+        <div className="generating-preview">
+          <div className="spinner" />
+          <span>Generating preview...</span>
+        </div>
+        <div className="file-info">
+          <span className="file-name">{truncateFilename(item.name)}</span>
+          {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
+        </div>
+      </div>
+    );
+  }
+
   if (loadErrors.has(item.id)) {
     return (
       <div className="file-preview error">

@@ -7,6 +7,6 @@ export interface ClipboardItem {
   name?: string; // To store the original filename
   size?: number; // To store the file size in bytes
   encrypted?: boolean;
-  status?: 'complete' | 'uploading' | 'downloading'; // Transfer status
+  status?: 'complete' | 'uploading' | 'downloading' | 'generating'; // Transfer status ('generating' for thumbnail generation)
   progress?: number; // Upload/download progress (0-100)
 }

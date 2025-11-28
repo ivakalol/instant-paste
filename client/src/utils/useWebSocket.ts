@@ -5,7 +5,6 @@ import {
   getKeyPair,
   storeKeyPair,
   encryptFor,
-  decryptFrom,
   E2eeKeyPair,
 } from './e2ee';
 

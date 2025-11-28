@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
-import { copyToClipboard, downloadFile, truncateFilename } from '../utils/clipboard';
+import { copyToClipboard, downloadFile } from '../utils/clipboard';
 import FilePreview from './FilePreview';
 
 interface ClipboardAreaProps {
@@ -69,7 +69,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  const handleFileSelected = (file: File) => {
+  const handleFileSelected = useCallback((file: File) => {
     const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
     const requiredPassword = "qwerty7654321";
 
@@ -84,7 +84,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       }
     }
     onFileSelect(file);
-  }
+  }, [onFileSelect, showToast]);
 
   const processClipboardItem = useCallback((item: DataTransferItem) => {
     if (item.kind === 'string' && item.type.startsWith('text/') && onPaste) {
@@ -95,7 +95,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         handleFileSelected(file);
       }
     }
-  }, [onPaste, onFileSelect, showToast]);
+  }, [onPaste, handleFileSelected]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
