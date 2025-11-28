@@ -61,7 +61,7 @@ export const clearHistory = async (roomId: string): Promise<void> => {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(STORE_NAME, 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(roomId);
+        store.delete(roomId);
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error || new Error('Failed to clear history from IndexedDB.'));
