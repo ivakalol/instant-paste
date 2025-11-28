@@ -255,33 +255,45 @@ const Room: React.FC = () => {
         fileType = 'file';
     }
     
+    // For images, show a generating state while the thumbnail is being created
+    // This prevents UI blocking perception for large images
+    const isImage = fileType === 'image';
+    const initialItem: ClipboardItem = {
+      id: fileId,
+      fileId: fileId,
+      type: fileType,
+      content: '', // Empty initially for images during thumbnail generation
+      name: file.name,
+      size: file.size,
+      timestamp: Date.now(),
+      encrypted: true,
+      status: isImage ? 'generating' : 'uploading',
+      progress: 0,
+    };
+
+    // Add item to history immediately so user sees feedback
+    setHistory(prev => [initialItem, ...prev].slice(0, MAX_HISTORY));
+
+    // Generate thumbnail for images
     let previewContent: string | undefined = undefined;
-    try {
-        if (fileType === 'image') {
-            previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
-        }
-    } catch (error) {
+    if (isImage) {
+      try {
+        previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
+      } catch (error) {
         console.warn('Could not create thumbnail for image:', error);
+      }
     }
     
     // For local display, use the thumbnail if available, otherwise create a blob URL from the original file.
     // The full file will be available for download regardless.
     const localPreviewUrl = previewContent || URL.createObjectURL(file);
 
-    const newItem: ClipboardItem = {
-      id: fileId,
-      fileId: fileId,
-      type: fileType,
-      content: localPreviewUrl,
-      name: file.name,
-      size: file.size,
-      timestamp: Date.now(),
-      encrypted: true,
-      status: 'uploading',
-      progress: 0,
-    };
-
-    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+    // Update the item with the generated preview and change status to uploading
+    setHistory(prev => prev.map(item => 
+      item.id === fileId 
+        ? { ...item, content: localPreviewUrl, status: 'uploading' as const }
+        : item
+    ));
 
     if (uploadFile) {
         // Pass the preview content along with the file metadata

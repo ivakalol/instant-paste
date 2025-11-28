@@ -390,6 +390,44 @@ body {
   background-color: var(--input-background);
 }
 
+/* Generating preview loading indicator */
+.file-preview.generating {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.generating-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: var(--input-background);
+  border-radius: 8px;
+  border: 1px dashed var(--border-color);
+  max-width: 200px;
+}
+
+.generating-preview span {
+  font-size: 0.85rem;
+  color: var(--secondary-color);
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .item-actions {
   display: flex;
   gap: 0.5rem;
