@@ -86,6 +86,9 @@ wss.on('connection', (ws) => {
         case 'file-chunk':
           handleFileChunk(ws, data);
           break;
+        case 'file-start':
+          handleFileStart(ws, data);
+          break;
         default:
           log(LOG_LEVELS.WARN, `[ROOM ${ws.roomId}] Unknown message type from ${ws.id}:`, data.type);
       }
@@ -253,6 +256,27 @@ function handleFileChunk(ws, data) {
 
   broadcastToRoom(ws.roomId, message, ws);
 }
+
+function handleFileStart(ws, data) {
+  if (!ws.roomId) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not in a room' }));
+    return;
+  }
+
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+  room.lastActivity = Date.now();
+
+  const message = {
+    ...data,
+    senderId: ws.id,
+    timestamp: Date.now()
+  };
+
+  log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Relaying '${data.type}' from ${ws.id}`);
+  broadcastToRoom(ws.roomId, message, ws);
+}
+
 
 
 function broadcastToRoom(roomId, data, excludeWs = null) {

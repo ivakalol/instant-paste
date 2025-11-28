@@ -111,45 +111,74 @@ const Room: React.FC = () => {
   }, [showToast]);
 
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
-    if (message.type === 'clipboard' && message.contentType && (message.content || message.fileId || message.previewContent)) {
-      const newItem: ClipboardItem = {
-        id: message.fileId || Date.now().toString(),
-        fileId: message.fileId,
-        type: message.contentType as ClipboardItem['type'],
-        content: message.previewContent || message.content || '',
-        timestamp: message.timestamp || Date.now(),
-        name: message.fileName,
-        size: message.fileSize,
-        encrypted: true,
-        status: message.fileId ? 'downloading' : 'complete',
-        progress: message.fileId ? 0 : 100,
-      };
-
-      setHistory(prev => {
-        // Avoid adding duplicates
-        if (prev.some(item => item.id === newItem.id)) {
-            return prev;
+    // Handler for all incoming messages from the WebSocket
+    switch (message.type) {
+      case 'file-start':
+        if (message.fileId) {
+          const newItem: ClipboardItem = {
+            id: message.fileId,
+            fileId: message.fileId,
+            type: message.fileType as ClipboardItem['type'] || 'file',
+            content: '', // No content yet
+            timestamp: message.timestamp || Date.now(),
+            name: message.fileName,
+            size: message.fileSize,
+            encrypted: true,
+            status: 'generating', // New status for waiting for thumbnail
+            progress: 0,
+          };
+          setHistory(prev => {
+            if (prev.some(item => item.id === newItem.id)) return prev;
+            return [newItem, ...prev].slice(0, MAX_HISTORY);
+          });
         }
-        const updated = [newItem, ...prev].slice(0, MAX_HISTORY);
-        return updated;
-      });
+        break;
 
-      if (autoCopyEnabled && newItem.status === 'complete' && message.contentType === 'text' && message.content) {
-        const now = Date.now();
-        if (now - lastAutoCopyRef.current > 2000) {
-          lastAutoCopyRef.current = now;
-          if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(message.content)
-              .then(() => showToast('Text auto-copied to clipboard', 'success'))
-              .catch((err) => {
-                console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
+      case 'clipboard':
+        if (message.fileId && message.previewContent) {
+          // This is the arrival of the thumbnail, update the placeholder
+          setHistory(prev => prev.map(item => {
+            if (item.fileId === message.fileId) {
+              return {
+                ...item,
+                content: message.previewContent || '',
+                type: message.contentType as ClipboardItem['type'] || item.type,
+                status: 'downloading', // Start showing progress bar
+              };
+            }
+            return item;
+          }));
+        } else if (!message.fileId) {
+          // This is a regular text message
+          const newItem: ClipboardItem = {
+            id: Date.now().toString(),
+            type: 'text',
+            content: message.content || '',
+            timestamp: message.timestamp || Date.now(),
+            encrypted: true,
+            status: 'complete',
+            progress: 100,
+          };
+          setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+
+          if (autoCopyEnabled && message.content) {
+            const now = Date.now();
+            if (now - lastAutoCopyRef.current > 2000) {
+              lastAutoCopyRef.current = now;
+              if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(message.content)
+                  .then(() => showToast('Text auto-copied to clipboard', 'success'))
+                  .catch((err) => {
+                    console.error('Auto-copy with navigator.clipboard failed, falling back.', err);
+                    copyTextToClipboard(message.content!);
+                  });
+              } else {
                 copyTextToClipboard(message.content!);
-              });
-          } else {
-            copyTextToClipboard(message.content!);
+              }
+            }
           }
         }
-      }
+        break;
     }
   }, [autoCopyEnabled, showToast, copyTextToClipboard]);
 
@@ -255,28 +284,24 @@ const Room: React.FC = () => {
         fileType = 'file';
     }
     
-    // For images, show a generating state while the thumbnail is being created
-    // This prevents UI blocking perception for large images
-    const isImage = fileType === 'image';
+    // Create a placeholder for the sender's UI immediately
     const initialItem: ClipboardItem = {
       id: fileId,
       fileId: fileId,
       type: fileType,
-      content: '', // Empty initially for images during thumbnail generation
+      content: '', // Empty initially
       name: file.name,
       size: file.size,
       timestamp: Date.now(),
       encrypted: true,
-      status: isImage ? 'generating' : 'uploading',
+      status: fileType === 'image' ? 'generating' : 'uploading',
       progress: 0,
     };
-
-    // Add item to history immediately so user sees feedback
     setHistory(prev => [initialItem, ...prev].slice(0, MAX_HISTORY));
 
     // Generate thumbnail for images
     let previewContent: string | undefined = undefined;
-    if (isImage) {
+    if (fileType === 'image') {
       try {
         previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
       } catch (error) {
@@ -284,19 +309,16 @@ const Room: React.FC = () => {
       }
     }
     
-    // For local display, use the thumbnail if available, otherwise create a blob URL from the original file.
-    // The full file will be available for download regardless.
+    // Update the local UI with the thumbnail or a blob URL for local preview
     const localPreviewUrl = previewContent || URL.createObjectURL(file);
-
-    // Update the item with the generated preview and change status to uploading
     setHistory(prev => prev.map(item => 
       item.id === fileId 
         ? { ...item, content: localPreviewUrl, status: 'uploading' as const }
         : item
     ));
 
+    // The hook now handles the entire upload sequence
     if (uploadFile) {
-        // Pass the preview content along with the file metadata
         await uploadFile(file, fileId, previewContent);
     } else {
        showToast('File upload is not available.', 'error');
