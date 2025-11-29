@@ -26,14 +26,16 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   const [showQrCode, setShowQrCode] = useState(false);
   const { isDarkMode, toggleTheme } = useTheme(); // Use the theme hook
 
-  const copyRoomId = async () => {
+  const copyRoomId = () => {
     if (roomState.roomId) {
-      const success = await copyToClipboard(roomState.roomId);
-      if (success) {
-        showToast('Room ID copied to clipboard!', 'success');
-      } else {
-        showToast('Failed to copy room ID', 'error');
-      }
+      copyToClipboard(roomState.roomId)
+        .then(() => {
+          showToast('Room ID copied to clipboard!', 'success');
+        })
+        .catch(error => {
+          console.error('Failed to copy room ID:', error);
+          showToast('Failed to copy room ID', 'error');
+        });
     }
   };
 

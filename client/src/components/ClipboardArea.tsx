@@ -137,37 +137,40 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  const handleCopy = async (item: ClipboardHistoryItem) => {
+  const handleCopy = (item: ClipboardHistoryItem) => {
     if (item.status && item.status !== 'complete') {
         showToast('Cannot copy file while it is transferring.', 'info');
         return;
     }
 
     if (item.type === 'text') {
-      const success = await copyToClipboard(item.content);
-      if (success) {
-        showToast('Copied to clipboard!', 'success');
-        setCopiedItemId(item.id);
-        setTimeout(() => setCopiedItemId(null), 1000);
-      } else {
-        showToast('Failed to copy to clipboard', 'error');
-      }
+      copyToClipboard(item.content)
+        .then(() => {
+          showToast('Copied to clipboard!', 'success');
+          setCopiedItemId(item.id);
+          setTimeout(() => setCopiedItemId(null), 1000);
+        })
+        .catch(error => {
+          console.error('Failed to copy text to clipboard:', error);
+          showToast('Failed to copy to clipboard', 'error');
+        });
     } else if (item.type === 'image') {
       if (!navigator.clipboard || !navigator.clipboard.write) {
         showToast('Copying images is not supported in your browser.', 'error');
         return;
       }
-      try {
-        const response = await fetch(item.content);
-        const blob = await response.blob();
-        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
-        showToast('Image copied to clipboard!', 'success');
-        setCopiedItemId(item.id);
-        setTimeout(() => setCopiedItemId(null), 1000);
-      } catch (error) {
-        console.error('Failed to copy image to clipboard:', error);
-        showToast('Failed to copy image.', 'error');
-      }
+      fetch(item.content)
+        .then(response => response.blob())
+        .then(blob => navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]))
+        .then(() => {
+          showToast('Image copied to clipboard!', 'success');
+          setCopiedItemId(item.id);
+          setTimeout(() => setCopiedItemId(null), 1000);
+        })
+        .catch(error => {
+          console.error('Failed to copy image to clipboard:', error);
+          showToast('Failed to copy image.', 'error');
+        });
     } else {
         showToast(`Cannot copy ${item.type} directly. Please use the download button.`, 'info');
     }
