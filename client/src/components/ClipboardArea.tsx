@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
-import { copyToClipboard, downloadFile } from '../utils/clipboard';
+import { copyToClipboard, downloadFile, getMimeType } from '../utils/clipboard';
 import FilePreview from './FilePreview';
 
 interface ClipboardAreaProps {
@@ -159,18 +159,31 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         showToast('Copying images is not supported in your browser.', 'error');
         return;
       }
-      fetch(item.content)
-        .then(response => response.blob())
-        .then(blob => navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]))
-        .then(() => {
-          showToast('Image copied to clipboard!', 'success');
-          setCopiedItemId(item.id);
-          setTimeout(() => setCopiedItemId(null), 1000);
-        })
-        .catch(error => {
-          console.error('Failed to copy image to clipboard:', error);
-          showToast('Failed to copy image.', 'error');
+      try {
+        // Create a promise that resolves to the blob
+        const blobPromise = fetch(item.content).then(res => res.blob());
+        const mimeType = getMimeType(item.name);
+
+        // Create a ClipboardItem with a promise for the blob
+        const clipboardItem = new ClipboardItem({
+          [mimeType]: blobPromise,
         });
+
+        // Call write() synchronously with the ClipboardItem
+        navigator.clipboard.write([clipboardItem])
+          .then(() => {
+            showToast('Image copied to clipboard!', 'success');
+            setCopiedItemId(item.id);
+            setTimeout(() => setCopiedItemId(null), 1000);
+          })
+          .catch(error => {
+            console.error('Failed to copy image to clipboard:', error);
+            showToast('Failed to copy image.', 'error');
+          });
+      } catch (error) {
+        console.error('An unexpected error occurred during image copy setup:', error);
+        showToast('Failed to copy image.', 'error');
+      }
     } else {
         showToast(`Cannot copy ${item.type} directly. Please use the download button.`, 'info');
     }
