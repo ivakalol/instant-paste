@@ -109,7 +109,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               </svg>
             </div>
             <h4>Paste Anything</h4>
-            <p>Sync text, images, and video files. Just paste, drag & drop, or select a file.</p>
+            <p>Sync text, images, and video files. Just paste, drag & drop, or select a files.</p>
           </div>
           <div className="feature-item">
             <div className="feature-icon">
@@ -127,7 +127,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               </svg>
             </div>
             <h4>E2E Encrypted</h4>
-            <p>All data is end-to-end encrypted. Only encrypted content is sent over the internet. Your content is never stored on our server.</p>
+            <p>For now only text data is encrypted. No decryption for videos/photos/files. Be careful when sending them. I am trying to build encryption for them also.</p>
           </div>
         </div>
       </div>
