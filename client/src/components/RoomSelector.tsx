@@ -127,7 +127,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               </svg>
             </div>
             <h4>E2E Encrypted</h4>
-            <p>For now only text data is encrypted. No decryption for videos/photos/files. Be careful when sending them. I am trying to build encryption for them also.</p>
+            <p>For now only text data is encrypted. No encryption for videos/photos/files. Be careful when sending them. I am trying to build encryption for them also.</p>
           </div>
         </div>
       </div>
