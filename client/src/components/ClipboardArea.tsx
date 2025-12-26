@@ -171,7 +171,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                 blob = await convertBlobToPng(blob);
             } catch (conversionError) {
                 console.error('Failed to convert image to PNG:', conversionError);
-                showToast('Failed to convert image for clipboard.', 'error');
+                showToast('Failed to convert image format for clipboard compatibility.', 'error');
                 return;
             }
         }
