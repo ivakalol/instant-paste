@@ -66,7 +66,14 @@ const convertBlobToPngFallback = (blob: Blob): Promise<Blob> => {
             }
             
             ctx.drawImage(img, 0, 0);
+
+            const timeoutId = setTimeout(() => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Timeout converting image to PNG'));
+            }, 5000);
+
             canvas.toBlob((pngBlob) => {
+                clearTimeout(timeoutId);
                 URL.revokeObjectURL(url);
                 if (pngBlob) {
                     resolve(pngBlob);
@@ -107,7 +114,12 @@ export const convertBlobToPng = async (blob: Blob): Promise<Blob> => {
         bitmap.close();
         
         return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('Timeout converting image to PNG'));
+            }, 5000);
+
             canvas.toBlob((pngBlob) => {
+                clearTimeout(timeoutId);
                 if (pngBlob) {
                     resolve(pngBlob);
                 } else {

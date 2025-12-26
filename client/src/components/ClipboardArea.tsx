@@ -164,8 +164,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         const response = await fetch(item.content);
         let blob = await response.blob();
         
-        // Firefox and some other browsers strictly require image/png for ClipboardItem
-        if (blob.type !== 'image/png') {
+        // Firefox supports PNG, JPEG, and GIF. We convert other types (like WebP) to PNG for maximum compatibility.
+        const supportedTypes = ['image/png', 'image/jpeg', 'image/gif'];
+        if (!supportedTypes.includes(blob.type)) {
             try {
                 blob = await convertBlobToPng(blob);
             } catch (conversionError) {
