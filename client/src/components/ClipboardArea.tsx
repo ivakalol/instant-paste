@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
-import { copyToClipboard, downloadFile, getMimeType } from '../utils/clipboard';
+import { copyToClipboard, downloadFile } from '../utils/clipboard';
 import { convertBlobToPng } from '../utils/image';
 import FilePreview from './FilePreview';
 
