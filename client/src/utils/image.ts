@@ -86,7 +86,7 @@ const convertBlobToPngFallback = (blob: Blob): Promise<Blob> => {
 };
 
 export const convertBlobToPng = async (blob: Blob): Promise<Blob> => {
-    // specialized fallback for Safari which has issues with createImageBitmap for Blobs in some versions
+    // Fallback for browsers that don't support createImageBitmap (e.g., older Safari versions)
     if (!window.createImageBitmap) {
         return convertBlobToPngFallback(blob);
     }
