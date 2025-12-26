@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
 import { copyToClipboard, downloadFile, getMimeType } from '../utils/clipboard';
+import { convertBlobToPng } from '../utils/image';
 import FilePreview from './FilePreview';
 
 interface ClipboardAreaProps {
@@ -137,7 +138,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
-  const handleCopy = (item: ClipboardHistoryItem) => {
+  const handleCopy = async (item: ClipboardHistoryItem) => {
     if (item.status && item.status !== 'complete') {
         showToast('Cannot copy file while it is transferring.', 'info');
         return;
@@ -160,28 +161,25 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
       }
       try {
-        // Create a promise that resolves to the blob
-        const blobPromise = fetch(item.content).then(res => res.blob());
-        const mimeType = getMimeType(item.name);
+        const response = await fetch(item.content);
+        let blob = await response.blob();
+        
+        // Firefox and some other browsers strictly require image/png for ClipboardItem
+        if (blob.type !== 'image/png') {
+            try {
+                blob = await convertBlobToPng(blob);
+            } catch (conversionError) {
+                console.warn('Failed to convert image to PNG, attempting to copy original blob:', conversionError);
+                // Fallback to original blob if conversion fails
+            }
+        }
 
-        // Create a ClipboardItem with a promise for the blob
-        const clipboardItem = new ClipboardItem({
-          [mimeType]: blobPromise,
-        });
-
-        // Call write() synchronously with the ClipboardItem
-        navigator.clipboard.write([clipboardItem])
-          .then(() => {
-            showToast('Image copied to clipboard!', 'success');
-            setCopiedItemId(item.id);
-            setTimeout(() => setCopiedItemId(null), 1000);
-          })
-          .catch(error => {
-            console.error('Failed to copy image to clipboard:', error);
-            showToast('Failed to copy image.', 'error');
-          });
+        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
+        showToast('Image copied to clipboard!', 'success');
+        setCopiedItemId(item.id);
+        setTimeout(() => setCopiedItemId(null), 1000);
       } catch (error) {
-        console.error('An unexpected error occurred during image copy setup:', error);
+        console.error('Failed to copy image to clipboard:', error);
         showToast('Failed to copy image.', 'error');
       }
     } else {
