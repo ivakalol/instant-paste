@@ -164,8 +164,8 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         const response = await fetch(item.content);
         let blob = await response.blob();
         
-        // Firefox supports PNG, JPEG, and GIF. We convert other types (like WebP) to PNG for maximum compatibility.
-        const supportedTypes = ['image/png', 'image/jpeg', 'image/gif'];
+        // Firefox only reliably supports PNG for writing to clipboard. We convert other types (like JPEG, GIF, WebP) to PNG.
+        const supportedTypes = ['image/png'];
         if (!supportedTypes.includes(blob.type)) {
             try {
                 blob = await convertBlobToPng(blob);
