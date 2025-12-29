@@ -47,3 +47,88 @@ export const createImageThumbnail = (file: File, maxWidth: number, maxHeight: nu
     reader.readAsDataURL(file);
   });
 };
+
+const convertBlobToPngFallback = (blob: Blob): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            
+            if (!ctx) {
+                URL.revokeObjectURL(url);
+                reject(new Error('Could not get canvas context'));
+                return;
+            }
+            
+            ctx.drawImage(img, 0, 0);
+
+            const timeoutId = setTimeout(() => {
+                URL.revokeObjectURL(url);
+                reject(new Error('Timeout converting image to PNG'));
+            }, 5000);
+
+            canvas.toBlob((pngBlob) => {
+                clearTimeout(timeoutId);
+                URL.revokeObjectURL(url);
+                if (pngBlob) {
+                    resolve(pngBlob);
+                } else {
+                    reject(new Error('Failed to convert image to PNG'));
+                }
+            }, 'image/png');
+        };
+        
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to load image for conversion'));
+        };
+        
+        img.src = url;
+    });
+};
+
+export const convertBlobToPng = async (blob: Blob): Promise<Blob> => {
+    // Fallback for browsers that don't support createImageBitmap (e.g., older Safari versions)
+    if (!window.createImageBitmap) {
+        return convertBlobToPngFallback(blob);
+    }
+
+    try {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+            bitmap.close();
+            throw new Error('Could not get canvas context');
+        }
+        
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('Timeout converting image to PNG'));
+            }, 5000);
+
+            canvas.toBlob((pngBlob) => {
+                clearTimeout(timeoutId);
+                if (pngBlob) {
+                    resolve(pngBlob);
+                } else {
+                    reject(new Error('Failed to convert image to PNG'));
+                }
+            }, 'image/png');
+        });
+    } catch (error) {
+        console.warn('createImageBitmap failed, falling back to HTMLImageElement:', error);
+        return convertBlobToPngFallback(blob);
+    }
+};
