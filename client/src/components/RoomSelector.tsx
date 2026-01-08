@@ -127,10 +127,24 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               </svg>
             </div>
             <h4>E2E Encrypted</h4>
-            <p>For now only text data is encrypted. No encryption for videos/photos/files. Be careful when sending them. I am trying to build encryption for them also.</p>
+            <p>Text content is End-to-End Encrypted (AES-GCM). File transfers are protected via HTTPS. Full E2EE for files is coming soon.</p>
           </div>
         </div>
       </div>
+
+      {/* <div className="about-section">
+        <h3>The Easiest Way to Sync Clipboard Across Devices</h3>
+        <p>
+          Instant Paste is a <strong>free, no-login universal clipboard tool</strong> that lets you copy on one device and paste on another instantly. 
+          Whether you need to <strong>share text from Android to PC</strong>, send photos from <strong>iPhone to Mac</strong>, or transfer files between <strong>Linux and Windows</strong>, 
+          our real-time sync makes it seamless.
+        </p>
+        <div className="seo-keywords">
+          <span>✅ No App Install Required</span>
+          <span>✅ Works on All Browsers</span>
+          <span>✅ 100% Free & Open Source</span>
+        </div>
+      </div> */}
     </div>
   );
 };
