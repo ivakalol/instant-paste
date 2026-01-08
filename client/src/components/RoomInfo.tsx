@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { RoomState } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCodeModal from './QRCodeModal';
-import { useTheme } from '../App'; // Import useTheme
+import { useTheme } from './ThemeContext'; // Import useTheme
 
 interface RoomInfoProps {
   roomState: RoomState;
