@@ -238,30 +238,6 @@ const Room: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast, isHistoryLoaded]);
 
-  const handlePaste = useCallback(async (type: string, content: string) => {
-    const newItem: ClipboardItem = {
-      id: Date.now().toString(),
-      type: 'text',
-      content,
-      timestamp: Date.now(),
-      encrypted: true,
-      status: 'complete',
-      progress: 100,
-    };
-
-    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
-
-    const sent = await sendMessage({
-      type: 'clipboard',
-      contentType: 'text',
-      content: content,
-    });
-
-    if (!sent) {
-      showToast('Failed to send content. WebSocket not connected.', 'error');
-    }
-  }, [sendMessage, showToast]);
-
   const handleFileSelect = useCallback(async (file: File) => {
     const fileId = `${Date.now()}-${file.name}`;
     let fileType: ClipboardItem['type'] = 'file';
@@ -324,6 +300,39 @@ const Room: React.FC = () => {
        showToast('File upload is not available.', 'error');
     }
   }, [uploadFile, showToast]);
+
+  const handlePaste = useCallback(async (type: string, content: string) => {
+    // Check if text is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
+    const sizeInBytes = new Blob([content]).size;
+    if (sizeInBytes > 1024 * 1024) {
+      showToast('Text too large. sending as file...', 'info');
+      const file = new File([content], `Large Text ${new Date().toLocaleTimeString()}.txt`, { type: 'text/plain' });
+      handleFileSelect(file);
+      return;
+    }
+
+    const newItem: ClipboardItem = {
+      id: Date.now().toString(),
+      type: 'text',
+      content,
+      timestamp: Date.now(),
+      encrypted: true,
+      status: 'complete',
+      progress: 100,
+    };
+
+    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+
+    const sent = await sendMessage({
+      type: 'clipboard',
+      contentType: 'text',
+      content: content,
+    });
+
+    if (!sent) {
+      showToast('Failed to send content. WebSocket not connected.', 'error');
+    }
+  }, [sendMessage, showToast, handleFileSelect]);
 
   const handleLeaveRoom = () => {
     if (roomId) {
