@@ -43,7 +43,24 @@ const LOG_LEVELS = {
 };
 
 function log(level, message, ...args) {
-  const timestamp = new Date().toISOString();
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Sofia',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
+
+  const p = formatter.formatToParts(now).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const timestamp = `${p.hour}:${p.minute}.${p.second}, ${p.year}-${p.month}-${p.day}`;
   console.log(`[${timestamp}] [${level}] ${message}`, ...args);
 }
 
