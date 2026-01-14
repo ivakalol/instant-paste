@@ -10,15 +10,24 @@
     "install:all": "npm install && cd client && npm install",
     "setup": "npm install && cd client && npm install && cd .. && npm run build:client"
   },
-  "keywords": ["clipboard", "sync", "real-time", "websocket", "paste"],
+  "keywords": [
+    "clipboard",
+    "sync",
+    "real-time",
+    "websocket",
+    "paste"
+  ],
   "author": "Ivaylo Chernev",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "ws": "^8.14.2",
-    "cors": "^2.8.5"
+    "ws": "^8.14.2"
   },
   "engines": {
     "node": ">=14.0.0"
+  },
+  "devDependencies": {
+    "baseline-browser-mapping": "^2.9.14"
   }
 }
