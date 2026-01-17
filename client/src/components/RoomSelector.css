@@ -1,0 +1,339 @@
+/* Room Page Layout */
+.room-page {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding-bottom: 3rem;
+  max-width: 900px;
+  margin: 0 auto;
+  color: var(--text-color);
+}
+
+/* Hero Section */
+.hero {
+  text-align: center;
+  padding: 4rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.hero h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-color) 0%, var(--primary-color) 60%, var(--secondary-color) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.hero-subtitle {
+  font-size: 1.25rem;
+  color: color-mix(in srgb, var(--secondary-color) 75%, var(--text-color) 25%);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background-color: var(--input-background);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+.hero-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hero-join {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--card-background);
+  padding: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.25);
+}
+
+.hero-join .room-input {
+  border: none;
+  background: transparent;
+  padding: 0.5rem 1rem;
+  width: 140px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  min-width: unset;
+  box-shadow: none;
+  color: white;
+}
+
+.hero-join .room-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.hero-join .room-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);  /* Semi-transparent white */
+}
+
+.hero-footnotes {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--secondary-color) 70%, var(--text-color) 30%);
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.hero-footnotes span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hero-footnotes span::before {
+  content: "✓";
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+/* Cards */
+.card {
+  background: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 6px 24px -12px rgba(0, 0, 0, 0.15);
+}
+
+.section-title {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.section-title h3 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+}
+
+.section-title p {
+  color: color-mix(in srgb, var(--secondary-color) 75%, var(--text-color) 25%);
+  font-size: 1.05rem;
+}
+
+/* Recent Rooms */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.card-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.pill {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--input-background) 88%);
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--text-color) 80%, var(--primary-color) 20%);
+  border: 1px solid var(--border-color);
+}
+
+.recent-rooms-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+/* Steps Grid (How it works) */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.step-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--input-background);
+  color: var(--primary-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.step h4 {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.step p {
+  font-size: 0.95rem;
+  color: color-mix(in srgb, var(--secondary-color) 75%, var(--text-color) 25%);
+  line-height: 1.55;
+}
+
+/* Features Grid */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+
+.feature-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: var(--input-background);
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: border-color 0.2s, transform 0.2s;
+  text-align: left;
+}
+
+.feature-item:hover {
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.25);
+}
+
+.feature-icon {
+  font-size: 1.5rem;
+  width: auto;
+  height: auto;
+  background: transparent;
+  margin: 0;
+  display: block;
+  text-align: left;
+}
+
+.feature-item h4 {
+  font-weight: 800;
+  margin: 0;
+}
+
+/* About / SEO */
+.about {
+  text-align: center;
+}
+
+.about .seo-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  color: color-mix(in srgb, var(--text-color) 85%, var(--secondary-color) 15%);
+}
+
+/* Buttons & Inputs specific to this page */
+.btn-lg {
+  padding: 0.875rem 2rem;
+  font-size: 1.125rem;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-color);
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--input-background);
+}
+
+.btn-chip {
+  background: var(--input-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+  font-family: monospace;
+  font-size: 1.05rem;
+  color: var(--primary-color);
+}
+
+.btn-chip:hover {
+  border-color: var(--primary-color);
+  background: var(--card-background);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .hero h1 {
+    font-size: 2.5rem;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .hero-join {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hero-join .room-input {
+    flex: 1;
+    width: auto;
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 1.5rem;
+  }
+}

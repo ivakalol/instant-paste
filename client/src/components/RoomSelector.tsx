@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRecentRooms, addRecentRoom } from '../utils/recentRooms';
+import './RoomSelector.css';
 
 interface RoomSelectorProps {
   onCreateRoom: () => Promise<string | null>;
@@ -28,13 +29,12 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const roomToJoin = roomId.trim().toUpperCase();
-    if (roomToJoin) {
-      const success = await onJoinRoom(roomToJoin);
-      if (success) {
-        addRecentRoom(roomToJoin);
-        navigate(`/${roomToJoin}`);
-        window.location.reload();
-      }
+    if (!roomToJoin) return;
+    const success = await onJoinRoom(roomToJoin);
+    if (success) {
+      addRecentRoom(roomToJoin);
+      navigate(`/${roomToJoin}`);
+      window.location.reload();
     }
   };
 
@@ -45,43 +45,51 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
   };
 
   return (
-    <div className="room-selector">
-      <h1>Ivaka Instant Paste</h1>
-      <p className="subtitle">Real-time clipboard sync between devices</p>
-      
-      <div className="room-options">
-        <button onClick={handleCreate} className="btn btn-primary" disabled={!isReady}>
-          {isReady ? 'Create New Room' : 'Initializing...'}
-        </button>
-        
-        <div className="divider">
-          <span>OR</span>
-        </div>
-        
-        <form onSubmit={handleJoin} className="join-form">
-          <input
-            type="text"
-            placeholder="Enter Room ID"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-            maxLength={6}
-            className="room-input"
-          />
-          <button type="submit" className="btn btn-secondary" disabled={!roomId.trim() || !isReady}>
-            Join Room
+    <div className="room-page">
+      <div className="hero">
+        <div className="hero-badge">No login · Free · Open Source</div>
+        <h1>Instant Paste</h1>
+        <p className="hero-subtitle">
+          Copy on one device, paste on another. Real-time clipboard sync across any browser and OS.
+        </p>
+        <div className="hero-actions">
+          <button onClick={handleCreate} className="btn btn-primary btn-lg" disabled={!isReady}>
+            {isReady ? 'Create a Room' : 'Initializing…'}
           </button>
-        </form>
+          <form onSubmit={handleJoin} className="join-form hero-join">
+            <input
+              type="text"
+              placeholder="Enter room ID"
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+              maxLength={6}
+              className="room-input"
+              aria-label="Enter room ID"
+            />
+            <button type="submit" className="btn btn-ghost" disabled={!roomId.trim() || !isReady}>
+              Join
+            </button>
+          </form>
+        </div>
+        <div className="hero-footnotes">
+          <span>Works on all modern browsers</span>
+          <span>Text E2E encrypted (AES-GCM)</span>
+          <span>HTTPS protected file transfers</span>
+        </div>
       </div>
 
       {recentRooms.length > 0 && (
-        <div className="recent-rooms-section">
-          <h3 className="recent-rooms-title">Recently Visited</h3>
+        <div className="card recent-rooms">
+          <div className="card-header">
+            <h3>Jump back in</h3>
+            <span className="pill">Recent</span>
+          </div>
           <div className="recent-rooms-list">
             {recentRooms.map((recentRoomId) => (
               <button
                 key={recentRoomId}
                 onClick={() => handleJoinRecent(recentRoomId)}
-                className="btn btn-recent"
+                className="btn btn-chip"
               >
                 {recentRoomId}
               </button>
@@ -89,62 +97,72 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           </div>
         </div>
       )}
-      
-      <div className="features-section">
-        <h3 className="features-title">How It Works</h3>
-        <div className="features-grid">
-          <div className="feature-item">
-            <div className="feature-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            </div>
-            <h4>Create or Join Rooms</h4>
-            <p>Start a new temporary room with one click or join an existing one with a simple ID.</p>
+
+      <div className="card how-it-works">
+        <div className="section-title">
+          <h3>How it works</h3>
+          <p>Three quick steps to share anything instantly.</p>
+        </div>
+        <div className="steps-grid">
+          <div className="step">
+            <div className="step-icon">1</div>
+            <h4>Create or join a room</h4>
+            <p>Spin up a room with one click or enter an existing 6-character ID.</p>
           </div>
-          <div className="feature-item">
-            <div className="feature-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-              </svg>
-            </div>
-            <h4>Paste Anything</h4>
-            <p>Sync text, images, and video files. Just paste, drag & drop, or select a files.</p>
+          <div className="step">
+            <div className="step-icon">2</div>
+            <h4>Paste or drop</h4>
+            <p>Send text, images, or files. Paste, drag & drop, or pick from your device.</p>
           </div>
-          <div className="feature-item">
-            <div className="feature-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.81m5.84-2.57a14.98 14.98 0 00-5.84-2.57m-2.57-5.84A14.98 14.98 0 005.63 11.91m12.42 2.46a14.98 14.98 0 00-2.46-12.42" />
-              </svg>
-            </div>
-            <h4>Instant Sync</h4>
-            <p>Your clipboard is shared in real-time with all connected devices in the room.</p>
-          </div>
-          <div className="feature-item">
-            <div className="feature-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-              </svg>
-            </div>
-            <h4>E2E Encrypted</h4>
-            <p>Text content is End-to-End Encrypted (AES-GCM). File transfers are protected via HTTPS. Full E2EE for files is coming soon.</p>
+          <div className="step">
+            <div className="step-icon">3</div>
+            <h4>Sync in real-time</h4>
+            <p>Your clipboard is mirrored instantly to every connected device.</p>
           </div>
         </div>
       </div>
 
-      {/* <div className="about-section">
-        <h3>The Easiest Way to Sync Clipboard Across Devices</h3>
-        <p>
-          Instant Paste is a <strong>free, no-login universal clipboard tool</strong> that lets you copy on one device and paste on another instantly. 
-          Whether you need to <strong>share text from Android to PC</strong>, send photos from <strong>iPhone to Mac</strong>, or transfer files between <strong>Linux and Windows</strong>, 
-          our real-time sync makes it seamless.
-        </p>
-        <div className="seo-keywords">
-          <span>✅ No App Install Required</span>
-          <span>✅ Works on All Browsers</span>
-          <span>✅ 100% Free & Open Source</span>
+      <div className="card features">
+        <div className="section-title">
+          <h3>Why people use Instant Paste</h3>
+          <p>Fast, private, and frictionless across platforms.</p>
         </div>
-      </div> */}
+        <div className="features-grid">
+          <div className="feature-item">
+            <div className="feature-icon">⚡</div>
+            <h4>Zero setup</h4>
+            <p>Runs in the browser—no installs, no accounts, just a room ID.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">🔒</div>
+            <h4>Private by design</h4>
+            <p>Text is E2E encrypted; file transfers are secured via HTTPS. Full file E2EE coming soon.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">🌐</div>
+            <h4>Cross-platform</h4>
+            <p>iOS, Android, macOS, Windows, Linux—if it has a browser, it works.</p>
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon">📎</div>
+            <h4>Handles rich content</h4>
+            <p>Text, images, and videos; drag-and-drop or paste directly.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="card about">
+        <div className="section-title">
+          <h3>The easiest way to sync your clipboard</h3>
+          <p>No-login universal clipboard. Free, open source, and built for speed.</p>
+        </div>
+        <div className="seo-keywords">
+          <span>✅ No app install</span>
+          <span>✅ Works on all browsers</span>
+          <span>✅ 100% free</span>
+          <span>✅ Open source</span>
+        </div>
+      </div>
     </div>
   );
 };
