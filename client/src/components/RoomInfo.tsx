@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import './RoomInfo.css';
 import { RoomState } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCodeModal from './QRCodeModal';

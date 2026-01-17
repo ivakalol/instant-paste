@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import './ClipboardArea.css';
 import type { ClipboardItem as ClipboardHistoryItem } from '../types/ClipboardItem';
 import { copyToClipboard, downloadFile } from '../utils/clipboard';
 import { convertBlobToPng } from '../utils/image';

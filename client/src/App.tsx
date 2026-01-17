@@ -34,7 +34,7 @@ const AppContent: React.FC = () => {
 const Footer:  React.FC = () => (
   <footer className="footer">
     <p>
-      Instant Paste - Real-time clipboard sync made by master Ivaka |{' '}
+      Instant Paste - Real-time clipboard sync made by ivaka_lol |{' '}
       <a
         href="https://github.com/ivakalol/instant-paste"
         target="_blank"
