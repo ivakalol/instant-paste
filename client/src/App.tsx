@@ -4,6 +4,7 @@ import RoomSelector from './components/RoomSelector';
 import Room from './pages/Room';
 import { useWebSocket } from './utils/useWebSocket';
 import { ThemeProvider } from './components/ThemeContext';
+import ThemeToggle from './components/ThemeToggle';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -11,6 +12,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="app">
+      <ThemeToggle />
       <div className="container">
         <Routes>
           <Route 

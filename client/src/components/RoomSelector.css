@@ -1,5 +1,6 @@
 /* Room Page Layout */
 .room-page {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -33,10 +34,11 @@
 
 .hero-subtitle {
   font-size: 1.25rem;
-  color: color-mix(in srgb, var(--secondary-color) 75%, var(--text-color) 25%);
+  color: color-mix(in srgb, var(--secondary-color) 85%, var(--text-color) 15%);
   max-width: 600px;
   margin: 0 auto;
   line-height: 1.6;
+  font-weight: 500;
 }
 
 .hero-badge {
@@ -67,9 +69,20 @@
   gap: 0.5rem;
   background: var(--card-background);
   padding: 0.35rem;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  border: 2px solid var(--border-color);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.hero-join:hover {
+  border-color: color-mix(in srgb, var(--primary-color) 40%, var(--border-color));
+  box-shadow: 0 12px 36px -12px rgba(0, 0, 0, 0.35);
+}
+
+.hero-join:focus-within {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 15%, transparent);
 }
 
 .hero-join .room-input {
@@ -82,7 +95,7 @@
   text-transform: uppercase;
   min-width: unset;
   box-shadow: none;
-  color: white;
+  color: var(--text-color);
 }
 
 .hero-join .room-input:focus {
@@ -91,7 +104,8 @@
 }
 
 .hero-join .room-input::placeholder {
-  color: rgba(255, 255, 255, 0.6);  /* Semi-transparent white */
+  color: var(--text-color);
+  opacity: 0.7;
 }
 
 .hero-footnotes {
