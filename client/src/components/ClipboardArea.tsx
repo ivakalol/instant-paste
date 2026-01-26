@@ -126,15 +126,21 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      handleFileSelected(files[0]);
+      // Process all dropped files
+      for (let i = 0; i < files.length; i++) {
+        handleFileSelected(files[i]);
+      }
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      handleFileSelected(files[0]);
-      // Reset the input so the same file can be selected again
+      // Process all selected files
+      for (let i = 0; i < files.length; i++) {
+        handleFileSelected(files[i]);
+      }
+      // Reset the input so the same files can be selected again
       e.target.value = '';
     }
   };
@@ -226,7 +232,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       <textarea
         ref={pasteAreaRef}
         className={`paste-zone ${isDragging ? 'dragging' : ''}`}
-        placeholder="Paste or type here (Ctrl+V / Cmd+V) or drag & drop files..."
+        placeholder="Paste or type here (Ctrl+V / Cmd+V) or drag & drop multiple files..."
         value={typedText}
         onChange={(e) => setTypedText(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -244,9 +250,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         </button>
         <button onClick={() => fileInputRef.current?.click()} className="btn btn-secondary">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 3a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm2 0a.5.5 0 0 1 .5.5v9a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/><path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2zm12 14H2V2h12v13z"/></svg>
-          Choose File
+          Choose Files
         </button>
-        <input ref={fileInputRef} type="file" onChange={handleFileChange} style={{ display: 'none' }} />
+        <input ref={fileInputRef} type="file" multiple accept="image/*,*" onChange={handleFileChange} style={{ display: 'none' }} />
       </div>
 
       {encryptionEnabled && ( <div className="encryption-indicator">🔒 Encryption enabled</div> )}
