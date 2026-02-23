@@ -71,17 +71,27 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  const handleFileSelected = useCallback((file: File) => {
+  const handleFileSelected = useCallback(async (file: File) => {
     const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
-    const requiredPassword = "qwerty7654321";
 
     if (file.size > passwordPromptSize) {
       const enteredPassword = prompt(`This file is larger than 150MB. Please enter the password to proceed:`);
       if (enteredPassword === null) {
         return;
       }
-      if (enteredPassword !== requiredPassword) {
-        showToast('Incorrect password.', 'error');
+      try {
+        const response = await fetch('/api/verify-upload-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: enteredPassword }),
+        });
+        const data = await response.json();
+        if (!data.valid) {
+          showToast('Incorrect password.', 'error');
+          return;
+        }
+      } catch {
+        showToast('Password verification failed. Please try again.', 'error');
         return;
       }
     }

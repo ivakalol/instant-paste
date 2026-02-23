@@ -1,15 +1,12 @@
-const KEY_STORAGE_NAME = 'e2ee-key-pair';
-
 // Key generation options
 const keyGenParams = {
   name: 'ECDH',
   namedCurve: 'P-256',
 };
 
-// AES-GCM parameters for encryption
+// AES-GCM base parameters for encryption (IV is always generated fresh per call – see encryptFor)
 const aesGcmParams = {
   name: 'AES-GCM',
-  iv: new Uint8Array(12), // Initialization vector
   tagLength: 128,
 };
 
@@ -26,29 +23,6 @@ export const generateE2eeKeyPair = async (): Promise<E2eeKeyPair> => {
   const publicKey = await window.crypto.subtle.exportKey('jwk', keyPair.publicKey!);
   const privateKey = await window.crypto.subtle.exportKey('jwk', keyPair.privateKey!);
   return { publicKey, privateKey };
-};
-
-/**
- * Stores the E2EE key pair in localStorage.
- */
-export const storeKeyPair = (keyPair: E2eeKeyPair) => {
-  localStorage.setItem(KEY_STORAGE_NAME, JSON.stringify(keyPair));
-};
-
-/**
- * Retrieves the E2EE key pair from localStorage.
- */
-export const getKeyPair = (): E2eeKeyPair | null => {
-  const stored = localStorage.getItem(KEY_STORAGE_NAME);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch (e) {
-      console.error('Failed to parse stored key pair', e);
-      return null;
-    }
-  }
-  return null;
 };
 
 /**

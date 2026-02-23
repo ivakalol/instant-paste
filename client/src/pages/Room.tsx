@@ -330,7 +330,7 @@ const Room: React.FC = () => {
     });
 
     if (!sent) {
-      showToast('Failed to send content. WebSocket not connected.', 'error');
+      showToast('Failed to send content. Check connection or E2EE key sync.', 'error');
     }
   }, [sendMessage, showToast, handleFileSelect]);
 

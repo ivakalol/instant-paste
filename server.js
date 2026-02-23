@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -10,8 +12,19 @@ const crypto = require('crypto');
 // =============================================================================
 
 const CONFIG = {
-  PORT: process.env. PORT || 3000,
-  
+  PORT: process.env.PORT || 3000,
+
+  // Secrets (loaded from .env)
+  LARGE_FILE_PASSWORD: process.env.LARGE_FILE_PASSWORD,
+  HEALTH_PASSWORD: process.env.HEALTH_PASSWORD,
+  ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  VERIFY_PASSWORD_MAX_ATTEMPTS: Number(process.env.VERIFY_PASSWORD_MAX_ATTEMPTS || 5),
+  VERIFY_PASSWORD_WINDOW_MS: Number(process.env.VERIFY_PASSWORD_WINDOW_MS || 5 * 60 * 1000),
+  VERIFY_PASSWORD_LOCK_MS: Number(process.env.VERIFY_PASSWORD_LOCK_MS || 10 * 60 * 1000),
+
   // Room settings
   MAX_ROOM_SIZE: 10,
   MAX_ROOM_INACTIVITY: 60 * 60 * 1000, // 1 hour
@@ -30,6 +43,16 @@ const CONFIG = {
   WS_MAX_PAYLOAD:  2 * 1024 * 1024, // 2MB
   HEARTBEAT_INTERVAL:  30000, // 30 seconds
 };
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+if (IS_PRODUCTION && !CONFIG.HEALTH_PASSWORD) {
+  throw new Error('HEALTH_PASSWORD is required in production.');
+}
+
+if (IS_PRODUCTION && CONFIG.ALLOWED_ORIGINS.length === 0) {
+  throw new Error('ALLOWED_ORIGINS is required in production.');
+}
 
 // =============================================================================
 // LOGGING
@@ -102,14 +125,82 @@ const ERROR_CODES = {
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server, maxPayload: CONFIG. WS_MAX_PAYLOAD });
+const wss = new WebSocket.Server({ noServer: true, maxPayload: CONFIG. WS_MAX_PAYLOAD });
 
 const rooms = new Map();
 const messageCounters = new Map();
+const verifyPasswordAttempts = new Map();
 
-app.use(cors());
+const normalizeOrigin = (origin) => {
+  if (!origin || typeof origin !== 'string') {
+    return '';
+  }
+  return origin.trim().toLowerCase().replace(/\/+$/, '');
+};
+
+if (process.env.TRUST_PROXY) {
+  const trustProxyValue = process.env.TRUST_PROXY;
+  const numericValue = Number(trustProxyValue);
+  if (trustProxyValue === 'true') {
+    app.set('trust proxy', true);
+  } else if (trustProxyValue === 'false') {
+    app.set('trust proxy', false);
+  } else if (!Number.isNaN(numericValue)) {
+    app.set('trust proxy', numericValue);
+  } else {
+    app.set('trust proxy', trustProxyValue);
+  }
+}
+
+const isOriginAllowed = (origin) => {
+  if (!origin) {
+    return !IS_PRODUCTION;
+  }
+
+  if (!IS_PRODUCTION && CONFIG.ALLOWED_ORIGINS.length === 0) {
+    return true;
+  }
+
+  const normalizedOrigin = normalizeOrigin(origin);
+  return CONFIG.ALLOWED_ORIGINS.some((allowedOrigin) => normalizeOrigin(allowedOrigin) === normalizedOrigin);
+};
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Requests without Origin are typically non-browser/server-to-server/health checks.
+    // CORS is a browser control, so allow these to avoid false production errors.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    log(LOG_LEVELS.WARN, `[CORS] Rejected origin: ${origin}`);
+    callback(null, false);
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+}));
 app.use(express.json({ limit: '1gb' }));
 app.use(express.static(path.join(__dirname, 'client/build')));
+
+server.on('upgrade', (request, socket, head) => {
+  const origin = request.headers.origin;
+
+  if (!isOriginAllowed(origin)) {
+    log(LOG_LEVELS.WARN, `[WS] Upgrade rejected for origin: ${origin || 'missing origin'}`);
+    socket.write('HTTP/1.1 403 Forbidden\\r\\n\\r\\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request);
+  });
+});
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -173,6 +264,27 @@ function logRoomStatus() {
     log(LOG_LEVELS.INFO, `${color}  Room ID: ${roomId}, Clients: ${room.clients.size}, Active File Transfers: ${fileTransfers}${reset}`);
   });
   log(LOG_LEVELS.INFO, `${color}-----------------------------------${reset}`);
+}
+
+function getClientIp(req) {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function getVerifyPasswordAttemptState(ip) {
+  const now = Date.now();
+  const existing = verifyPasswordAttempts.get(ip);
+
+  if (!existing || now > existing.resetTime) {
+    const freshState = {
+      attempts: 0,
+      resetTime: now + CONFIG.VERIFY_PASSWORD_WINDOW_MS,
+      lockUntil: 0,
+    };
+    verifyPasswordAttempts.set(ip, freshState);
+    return freshState;
+  }
+
+  return existing;
 }
 
 function broadcastToRoom(roomId, data, excludeWs = null) {
@@ -269,12 +381,20 @@ function handleJoin(ws, roomId, publicKey) {
 
   const clientsInRoom = Array. from(room.clients.values()).map(c => ({ id: c.ws.id, publicKey: c.publicKey }));
 
-  broadcastToRoom(roomId, {
+  sendMessage(ws, {
     type: 'room-update',
     roomId:  roomId,
     clients: clientsInRoom,
+    clientId: ws.id,
     clientCount: room.clients.size
   });
+
+  broadcastToRoom(roomId, {
+    type: 'room-update',
+    roomId: roomId,
+    clients: clientsInRoom,
+    clientCount: room.clients.size
+  }, ws);
 
   log(LOG_LEVELS.INFO, `[ROOM ${roomId}] Client ${ws.id} joined.  Total clients in room: ${room. clients.size}`);
 }
@@ -453,14 +573,14 @@ function handleFileStart(ws, data) {
 // WEBSOCKET CONNECTION HANDLER
 // =============================================================================
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, request) => {
   ws.id = crypto.randomUUID();
   ws.isAlive = true;
 
   metrics.totalConnections++;
   metrics.activeConnections++;
 
-  log(LOG_LEVELS.INFO, `[WS] Client connected: ${ws.id}`);
+  log(LOG_LEVELS.INFO, `[WS] Client connected: ${ws.id} (origin: ${request.headers.origin || 'none'})`);
 
   ws.on('pong', () => {
     ws.isAlive = true;
@@ -571,8 +691,55 @@ const roomStatusInterval = setInterval(logRoomStatus, CONFIG.ROOM_STATUS_INTERVA
 // HTTP ROUTES
 // =============================================================================
 
-// Health check endpoint with metrics
+// Upload password verification endpoint
+app.post('/api/verify-upload-password', (req, res) => {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const state = getVerifyPasswordAttemptState(ip);
+
+  if (state.lockUntil > now) {
+    return res.status(429).json({ valid: false, error: 'Too many failed attempts. Try again later.' });
+  }
+
+  const { password } = req.body;
+  if (!CONFIG.LARGE_FILE_PASSWORD) {
+    return res.status(500).json({ valid: false, error: 'LARGE_FILE_PASSWORD not configured on server' });
+  }
+
+  if (!password || password !== CONFIG.LARGE_FILE_PASSWORD) {
+    state.attempts += 1;
+    if (state.attempts >= CONFIG.VERIFY_PASSWORD_MAX_ATTEMPTS) {
+      state.lockUntil = now + CONFIG.VERIFY_PASSWORD_LOCK_MS;
+      state.attempts = 0;
+      state.resetTime = now + CONFIG.VERIFY_PASSWORD_WINDOW_MS;
+      verifyPasswordAttempts.set(ip, state);
+      return res.status(429).json({ valid: false, error: 'Too many failed attempts. Try again later.' });
+    }
+    verifyPasswordAttempts.set(ip, state);
+    return res.status(401).json({ valid: false });
+  }
+
+  verifyPasswordAttempts.delete(ip);
+  return res.json({ valid: true });
+});
+
+// Health check endpoint with metrics (Basic Auth protected)
 app.get('/health', (req, res) => {
+  if (CONFIG.HEALTH_PASSWORD) {
+    const authHeader = req.headers['authorization'];
+    const isBasicAuth = authHeader && authHeader.startsWith('Basic ');
+    if (!isBasicAuth) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Health Check"');
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+    // Accept any username; only the password matters
+    const password = decoded.includes(':') ? decoded.split(':').slice(1).join(':') : decoded;
+    if (password !== CONFIG.HEALTH_PASSWORD) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Health Check"');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+  }
   const uptime = Date.now() - metrics.startTime;
   res.json({
     status: 'ok',
