@@ -3,7 +3,8 @@ export interface WebSocketMessage {
   roomId?: string;
   contentType?: string;
   content?: string;
-  encryptedContent?: any; // Can be string or { iv, data }
+  encryptedContent?: string | Record<string, string>;
+  encryptedMetadata?: string | Record<string, string>;
   senderId?: string;
   message?: string;
   clients?: any;
@@ -18,6 +19,7 @@ export interface WebSocketMessage {
   fileType?: string;
   fileId?: string;
   chunk?: string; // Base64 encoded chunk
+  encryptedChunk?: string | Record<string, string>;
   chunkIndex?: number;
   totalChunks?: number;
   progress?: number; // 0-100

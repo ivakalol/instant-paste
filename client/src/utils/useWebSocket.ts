@@ -2,9 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { WebSocketMessage, RoomState } from '../types/index';
 import {
   generateE2eeKeyPair,
-  getKeyPair,
-  storeKeyPair,
   encryptFor,
+  decryptFrom,
   E2eeKeyPair,
 } from './e2ee';
 
@@ -30,6 +29,8 @@ interface IncomingFile {
   chunks: string[];
   metadata: WebSocketMessage;
 }
+
+type EncryptedPayload = string | Record<string, string>;
 
 
 
@@ -62,6 +63,88 @@ export const useWebSocket = (
 
   const onMessageRef = useRef((event: MessageEvent) => {});
 
+  const encryptForRecipients = useCallback(async (plainText: string): Promise<Record<string, string> | null> => {
+    if (!isE2eeEnabled || !keyPair || !roomState.clientId) {
+      return null;
+    }
+
+    const allRecipients = Object.values(roomClients).filter(client => client.id !== roomState.clientId);
+    if (allRecipients.length === 0) {
+      return null;
+    }
+
+    const recipientsMissingPublicKey = allRecipients.some((client) => !client.publicKey);
+    if (recipientsMissingPublicKey) {
+      return null;
+    }
+
+    const encryptedEntries = await Promise.all(
+      allRecipients.map(async (recipient) => {
+        const encryptedValue = await encryptFor(plainText, keyPair.privateKey, recipient.publicKey!);
+        return [recipient.id, encryptedValue] as const;
+      })
+    );
+
+    return Object.fromEntries(encryptedEntries);
+  }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
+
+  const getEncryptedValueForCurrentClient = useCallback((payload?: EncryptedPayload): string | null => {
+    if (!payload) {
+      return null;
+    }
+    if (typeof payload === 'string') {
+      return payload;
+    }
+    if (!roomState.clientId) {
+      return null;
+    }
+    return payload[roomState.clientId] || null;
+  }, [roomState.clientId]);
+
+  const decryptFromSender = useCallback(async (payload: EncryptedPayload | undefined, senderId?: string): Promise<string | null> => {
+    if (!isE2eeEnabled || !keyPair || !senderId) {
+      return null;
+    }
+
+    const encryptedValue = getEncryptedValueForCurrentClient(payload);
+    if (!encryptedValue) {
+      return null;
+    }
+
+    const sender = roomClients[senderId];
+    if (!sender?.publicKey) {
+      return null;
+    }
+
+    return decryptFrom(encryptedValue, keyPair.privateKey, sender.publicKey);
+  }, [getEncryptedValueForCurrentClient, isE2eeEnabled, keyPair, roomClients]);
+
+  const withDecryptedMetadata = useCallback(async (message: WebSocketMessage): Promise<WebSocketMessage> => {
+    if (!message.fileId || !message.encryptedMetadata) {
+      return message;
+    }
+
+    const decryptedMetadata = await decryptFromSender(message.encryptedMetadata, message.senderId);
+    if (!decryptedMetadata) {
+      return message;
+    }
+
+    try {
+      const parsed = JSON.parse(decryptedMetadata);
+      return {
+        ...message,
+        fileName: parsed.fileName,
+        fileSize: parsed.fileSize,
+        fileType: parsed.fileType,
+        contentType: parsed.contentType,
+        previewContent: parsed.previewContent,
+      };
+    } catch (error) {
+      console.error('Failed to parse decrypted metadata', error);
+      return message;
+    }
+  }, [decryptFromSender]);
+
   useEffect(() => {
     onClipboardReceivedRef.current = onClipboardReceived;
     onFileTransferUpdateRef.current = onFileTransferUpdate;
@@ -75,11 +158,7 @@ export const useWebSocket = (
           console.warn('Disabling E2EE: running in an insecure context.');
           e2eeEnabled = false;
         } else {
-          let pair = getKeyPair();
-          if (!pair) {
-            pair = await generateE2eeKeyPair();
-            storeKeyPair(pair);
-          }
+          const pair = await generateE2eeKeyPair();
           setKeyPair(pair);
         }
       } catch (error) {
@@ -94,7 +173,7 @@ export const useWebSocket = (
   }, []);
 
   const handleFileChunk = useCallback(async (message: WebSocketMessage) => {
-    if (!message.fileId || !message.chunk) return;
+    if (!message.fileId || (!message.chunk && !message.encryptedChunk)) return;
 
     let incomingFile = incomingFiles.current.get(message.fileId);
 
@@ -108,11 +187,22 @@ export const useWebSocket = (
         return;
     }
 
-    const chunk = message.chunk;
-    
-    if (typeof chunk !== 'string') {
-        console.error('Chunk is not a string:', message.fileId);
+    let chunk = message.chunk;
+
+    if (message.encryptedChunk) {
+      const decryptedChunk = await decryptFromSender(message.encryptedChunk, message.senderId);
+      if (decryptedChunk === null) {
+        onFileTransferUpdateRef.current?.({ type: 'file-error', fileId: message.fileId, message: 'Failed to decrypt file chunk' });
+        incomingFiles.current.delete(message.fileId);
         return;
+      }
+
+      chunk = decryptedChunk;
+    }
+
+    if (typeof chunk !== 'string') {
+      console.error('Chunk is not a string:', message.fileId);
+      return;
     }
 
     incomingFile.chunks[message.chunkIndex!] = chunk;
@@ -151,7 +241,7 @@ export const useWebSocket = (
             incomingFiles.current.delete(message.fileId);
         }
     }
-  }, []);
+  }, [decryptFromSender]);
 
   useEffect(() => {
     onMessageRef.current = async (event: MessageEvent) => {
@@ -181,29 +271,41 @@ export const useWebSocket = (
             break;
           case 'file-start':
             if (onClipboardReceivedRef.current) {
-              onClipboardReceivedRef.current(message);
+              const fileStartMessage = await withDecryptedMetadata(message);
+              onClipboardReceivedRef.current(fileStartMessage);
             }
             break;
           case 'clipboard':
             if (onClipboardReceivedRef.current) {
-                if(message.fileId && message.totalChunks) { // This is the metadata for a file transfer
-                    incomingFiles.current.set(message.fileId, {
-                        chunks: new Array(message.totalChunks),
-                        metadata: message,
-                    });
-                    
-                    // Now that metadata is set, process any orphaned chunks that arrived early
-                    if (orphanChunks.current.has(message.fileId)) {
-                        const chunks = orphanChunks.current.get(message.fileId)!;
-                        console.log(`Processing ${chunks.length} orphaned chunks for ${message.fileId}.`);
-                        chunks.sort((a, b) => a.chunkIndex! - b.chunkIndex!); // Ensure order
-                        for (const chunkMsg of chunks) {
-                            await handleFileChunk(chunkMsg);
-                        }
-                        orphanChunks.current.delete(message.fileId);
-                    }
+              let clipboardMessage = await withDecryptedMetadata(message);
+
+              if (!clipboardMessage.fileId && clipboardMessage.encryptedContent) {
+                const decryptedContent = await decryptFromSender(clipboardMessage.encryptedContent, clipboardMessage.senderId);
+                if (decryptedContent !== null) {
+                  clipboardMessage = { ...clipboardMessage, content: decryptedContent };
+                } else {
+                  clipboardMessage = { ...clipboardMessage, content: '[Unable to decrypt message]' };
                 }
-                onClipboardReceivedRef.current(message);
+              }
+
+              if (clipboardMessage.fileId && clipboardMessage.totalChunks) { // This is the metadata for a file transfer
+                incomingFiles.current.set(clipboardMessage.fileId, {
+                  chunks: new Array(clipboardMessage.totalChunks),
+                  metadata: clipboardMessage,
+                });
+                    
+                // Now that metadata is set, process any orphaned chunks that arrived early
+                if (orphanChunks.current.has(clipboardMessage.fileId)) {
+                  const chunks = orphanChunks.current.get(clipboardMessage.fileId)!;
+                  console.log(`Processing ${chunks.length} orphaned chunks for ${clipboardMessage.fileId}.`);
+                  chunks.sort((a, b) => a.chunkIndex! - b.chunkIndex!); // Ensure order
+                  for (const chunkMsg of chunks) {
+                    await handleFileChunk(chunkMsg);
+                  }
+                  orphanChunks.current.delete(clipboardMessage.fileId);
+                }
+              }
+              onClipboardReceivedRef.current(clipboardMessage);
             }
             break;
           case 'file-chunk':
@@ -230,7 +332,7 @@ export const useWebSocket = (
         console.error('Failed to parse WebSocket message:', error);
       }
     };
-  }, [handleFileChunk, roomState.clientId]);
+  }, [decryptFromSender, handleFileChunk, roomState.clientId, withDecryptedMetadata]);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -286,37 +388,107 @@ export const useWebSocket = (
   const sendMessage = useCallback(async (message: WebSocketMessage): Promise<boolean> => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       let messageToSend: WebSocketMessage = { ...message };
+      const recipients = Object.values(roomClients).filter(client => client.id !== roomState.clientId);
+      const requiresEncryption = isE2eeEnabled && recipients.length > 0;
       
       const isText = message.type === 'clipboard' && !message.fileId && message.content;
+      const isFileMetadata = (message.type === 'file-start') || (message.type === 'clipboard' && !!message.fileId);
 
-      if (isE2eeEnabled && keyPair && roomState.clientId && isText) {
-        const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
-        if (recipients.length > 0 && recipients[0].publicKey) {
-          const contentToEncrypt = message.content!;
-          const encryptedContent = await encryptFor(contentToEncrypt, keyPair.privateKey, recipients[0].publicKey);
-          messageToSend = { ...message, content: undefined, encryptedContent };
+      if (isFileMetadata) {
+        const metadataToEncrypt = {
+          fileName: message.fileName,
+          fileSize: message.fileSize,
+          fileType: message.fileType,
+          contentType: message.contentType,
+          previewContent: message.previewContent,
+        };
+        const hasMetadata = Object.values(metadataToEncrypt).some(value => value !== undefined);
+        if (hasMetadata) {
+          const encryptedMetadata = await encryptForRecipients(JSON.stringify(metadataToEncrypt));
+          if (!encryptedMetadata && requiresEncryption) {
+            console.error('Blocked insecure metadata send: E2EE required but metadata encryption failed.');
+            return false;
+          }
+          if (encryptedMetadata) {
+            messageToSend = {
+              ...messageToSend,
+              fileName: undefined,
+              fileSize: undefined,
+              fileType: undefined,
+              contentType: undefined,
+              previewContent: undefined,
+              encryptedMetadata,
+            };
+          }
         }
       }
+
+      if (isText) {
+        const contentToEncrypt = message.content!;
+        const encryptedContent = await encryptForRecipients(contentToEncrypt);
+        if (!encryptedContent && requiresEncryption) {
+          console.error('Blocked insecure text send: E2EE required but content encryption failed.');
+          return false;
+        }
+        if (encryptedContent) {
+          messageToSend = { ...messageToSend, content: undefined, encryptedContent };
+        }
+      }
+
+      if (message.type === 'file-chunk' && message.chunk) {
+        const encryptedChunk = await encryptForRecipients(message.chunk);
+        if (!encryptedChunk && requiresEncryption) {
+          console.error('Blocked insecure file chunk send: E2EE required but chunk encryption failed.');
+          return false;
+        }
+        if (encryptedChunk) {
+          messageToSend = { ...messageToSend, chunk: undefined, encryptedChunk };
+        }
+      }
+
       ws.current.send(JSON.stringify(messageToSend));
       return true;
     }
     return false;
-  }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
+  }, [encryptForRecipients, isE2eeEnabled, roomClients, roomState.clientId]);
 
   const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    const sendChunk = async (base64Chunk: string, chunkIndex: number): Promise<boolean> => {
+      const sent = await sendMessage({
+        type: 'file-chunk',
+        fileId: fileId,
+        chunkIndex,
+        totalChunks,
+        chunk: base64Chunk,
+      });
+
+      if (!sent) {
+        onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'Failed to send encrypted file chunk (connection or E2EE issue)' });
+        return false;
+      }
+
+      const progress = ((chunkIndex + 1) / totalChunks) * 100;
+      onFileTransferUpdateRef.current?.({ type: 'file-progress', fileId, progress });
+      return true;
+    };
     
     // Announce the file transfer first
-    await sendMessage({
+    const fileStartSent = await sendMessage({
       type: 'file-start',
       fileId: fileId,
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type,
     });
+    if (!fileStartSent) {
+      onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'Failed to send file metadata (connection or E2EE issue)' });
+      return;
+    }
 
     // Send the clipboard message with the preview and full metadata
-    await sendMessage({
+    const fileMetadataSent = await sendMessage({
       type: 'clipboard',
       contentType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file',
       fileId: fileId,
@@ -326,7 +498,11 @@ export const useWebSocket = (
       totalChunks: totalChunks,
       previewContent: previewContent,
     });
-    
+    if (!fileMetadataSent) {
+      onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'Failed to send encrypted file metadata' });
+      return;
+    }
+
     // Send file chunks
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
@@ -336,31 +512,21 @@ export const useWebSocket = (
       const reader = new FileReader();
       reader.readAsDataURL(chunk);
       
-      await new Promise<void>((resolve, reject) => {
+      const chunkSent = await new Promise<boolean>((resolve) => {
         reader.onload = async () => {
           const dataUrl = reader.result as string;
           const base64Chunk = dataUrl.split(',')[1];
-          const sent = await sendMessage({
-            type: 'file-chunk',
-            fileId: fileId,
-            chunkIndex: i,
-            totalChunks: totalChunks,
-            chunk: base64Chunk,
-          });
-          if (sent) {
-            const progress = ((i + 1) / totalChunks) * 100;
-            onFileTransferUpdateRef.current?.({ type: 'file-progress', fileId, progress });
-            resolve();
-          } else {
-            onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'WebSocket disconnected' });
-            reject(new Error('Failed to send chunk'));
-          }
+          resolve(await sendChunk(base64Chunk, i));
         };
         reader.onerror = () => {
           onFileTransferUpdateRef.current?.({ type: 'file-error', fileId, message: 'Failed to read file chunk' });
-          reject(new Error('Failed to read chunk'));
+          resolve(false);
         };
       });
+
+      if (!chunkSent) {
+        return;
+      }
     }
   }, [sendMessage]);
 
