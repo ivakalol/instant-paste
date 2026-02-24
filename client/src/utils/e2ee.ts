@@ -4,7 +4,7 @@ const keyGenParams = {
   namedCurve: 'P-256',
 };
 
-// AES-GCM base parameters for encryption (IV is always generated fresh per call – see encryptFor)
+// AES-GCM base parameters for encryption (IV is always generated fresh per call)
 const aesGcmParams = {
   name: 'AES-GCM',
   tagLength: 128,
@@ -15,17 +15,24 @@ export interface E2eeKeyPair {
   privateKey: JsonWebKey;
 }
 
+// Fix #3: Module-level singletons — allocated once instead of per-call
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 const BINARY_STRING_CHUNK_SIZE = 0x8000;
 
+// Fix #4: Use array accumulation instead of string concatenation.
+// Joining once at the end avoids creating progressively larger intermediate
+// strings that pressure the GC on memory-constrained devices.
 const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
-  let binary = '';
+  const parts: string[] = [];
 
   for (let i = 0; i < bytes.length; i += BINARY_STRING_CHUNK_SIZE) {
     const chunk = bytes.subarray(i, i + BINARY_STRING_CHUNK_SIZE);
-    binary += String.fromCharCode(...chunk);
+    parts.push(String.fromCharCode(...chunk));
   }
 
-  return btoa(binary);
+  return btoa(parts.join(''));
 };
 
 const base64ToUint8Array = (base64: string): Uint8Array => {
@@ -39,6 +46,17 @@ const base64ToUint8Array = (base64: string): Uint8Array => {
   return bytes;
 };
 
+const toBufferSource = (data: Uint8Array): BufferSource => {
+  if (data.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+
+  const buffer = new ArrayBuffer(data.byteLength);
+  const bytes = new Uint8Array(buffer);
+  bytes.set(data);
+  return bytes;
+};
+
 /**
  * Generates a new ECDH key pair for E2EE.
  */
@@ -49,62 +67,126 @@ export const generateE2eeKeyPair = async (): Promise<E2eeKeyPair> => {
   return { publicKey, privateKey };
 };
 
+// ====================================================================
+// Fix #1: Shared-secret cache
+//
+// ECDH key derivation is the most CPU-expensive operation in this module.
+// The shared secret between any two JWK key pairs is deterministic and
+// never changes, so we cache it keyed by a stable fingerprint derived
+// from both JWKs.  This turns O(recipients × messages) deriveKey calls
+// into O(recipients) — only the very first message to each recipient
+// pays the cost.
+// ====================================================================
+
 /**
- * Derives a shared secret from a private key and a public key.
+ * Builds a stable, order-independent cache key from two JWKs.
+ * Uses the 'x' and 'y' coordinates which uniquely identify a P-256 point,
+ * plus 'd' (private scalar) when present, sorted so (A,B) === (B,A) would
+ * NOT collide because private+public roles differ. We keep them ordered as
+ * private-then-public to match the derivation direction.
  */
-const deriveSharedSecret = async (privateKey: JsonWebKey, publicKey: JsonWebKey): Promise<CryptoKey> => {
-  const privKey = await window.crypto.subtle.importKey('jwk', privateKey, keyGenParams, false, ['deriveKey']);
-  const pubKey = await window.crypto.subtle.importKey('jwk', publicKey, keyGenParams, false, []);
-  
-  return await window.crypto.subtle.deriveKey(
+const jwkFingerprint = (jwk: JsonWebKey): string =>
+  `${jwk.x}|${jwk.y}${jwk.d ? `|${jwk.d}` : ''}`;
+
+const sharedSecretCache = new Map<string, CryptoKey>();
+
+/**
+ * Maximum number of cached shared secrets. In practice this stays tiny
+ * (one entry per unique peer), but the cap prevents unbounded growth if
+ * keys are rotated frequently.
+ */
+const SHARED_SECRET_CACHE_MAX = 64;
+
+/**
+ * Derives a shared AES-256-GCM key from a private ECDH key and a peer's
+ * public ECDH key.  Results are cached so repeated calls with the same
+ * key pair return instantly.
+ */
+const deriveSharedSecret = async (
+  privateKey: JsonWebKey,
+  publicKey: JsonWebKey,
+): Promise<CryptoKey> => {
+  const cacheKey = `${jwkFingerprint(privateKey)}::${jwkFingerprint(publicKey)}`;
+
+  const cached = sharedSecretCache.get(cacheKey);
+  if (cached) return cached;
+
+  const privKey = await window.crypto.subtle.importKey(
+    'jwk', privateKey, keyGenParams, false, ['deriveKey'],
+  );
+  const pubKey = await window.crypto.subtle.importKey(
+    'jwk', publicKey, keyGenParams, false, [],
+  );
+
+  const derived = await window.crypto.subtle.deriveKey(
     { name: 'ECDH', public: pubKey },
     privKey,
     { name: 'AES-GCM', length: 256 },
     true,
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   );
+
+  // Evict oldest entry if the cache is full
+  if (sharedSecretCache.size >= SHARED_SECRET_CACHE_MAX) {
+    const firstKey = sharedSecretCache.keys().next().value;
+    if (firstKey !== undefined) sharedSecretCache.delete(firstKey);
+  }
+
+  sharedSecretCache.set(cacheKey, derived);
+  return derived;
 };
 
 /**
  * Encrypts data for a recipient using their public key.
  */
-export const encryptFor = async (data: string, privateKey: JsonWebKey, publicKey: JsonWebKey): Promise<string> => {
+export const encryptFor = async (
+  data: string,
+  privateKey: JsonWebKey,
+  publicKey: JsonWebKey,
+): Promise<string> => {
   const sharedSecret = await deriveSharedSecret(privateKey, publicKey);
-  const encodedData = new TextEncoder().encode(data);
-  
+  const encodedData = textEncoder.encode(data);
+
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const encryptedData = await window.crypto.subtle.encrypt(
-    { ...aesGcmParams, iv },
+    { ...aesGcmParams, iv: toBufferSource(iv) },
     sharedSecret,
-    encodedData
+    toBufferSource(encodedData),
   );
-  
+
   // Combine IV and encrypted data for transmission
   const combined = new Uint8Array(iv.length + encryptedData.byteLength);
   combined.set(iv);
   combined.set(new Uint8Array(encryptedData), iv.length);
-  
+
   return uint8ArrayToBase64(combined);
 };
 
 /**
  * Decrypts data from a sender using their public key.
  */
-export const decryptFrom = async (encryptedDataB64: string, privateKey: JsonWebKey, publicKey: JsonWebKey): Promise<string | null> => {
+export const decryptFrom = async (
+  encryptedDataB64: string,
+  privateKey: JsonWebKey,
+  publicKey: JsonWebKey,
+): Promise<string | null> => {
   try {
     const sharedSecret = await deriveSharedSecret(privateKey, publicKey);
-    
+
     const combined = base64ToUint8Array(encryptedDataB64);
-    const iv = combined.slice(0, 12);
-    const encryptedData = combined.slice(12);
-    
+    // Fix #5: Zero-copy subarray views instead of slice() copies.
+    // combined already owns its ArrayBuffer so these views are safe to use
+    // with SubtleCrypto which accepts ArrayBufferView.
+    const iv = combined.subarray(0, 12);
+    const encryptedData = combined.subarray(12);
+
     const decryptedData = await window.crypto.subtle.decrypt(
-      { ...aesGcmParams, iv },
+      { ...aesGcmParams, iv: toBufferSource(iv) },
       sharedSecret,
-      encryptedData
+      toBufferSource(encryptedData),
     );
-    
-    return new TextDecoder().decode(decryptedData);
+
+    return textDecoder.decode(decryptedData);
   } catch (e) {
     console.error('Decryption failed', e);
     return null;
@@ -114,19 +196,21 @@ export const decryptFrom = async (encryptedDataB64: string, privateKey: JsonWebK
 // ====== Room Data Key (efficient single-encrypt for file chunks) ======
 
 /**
- * Generates a random AES-256-GCM key for encrypting all chunks of a single file transfer.
- * The key is distributed to recipients via ECDH, so each chunk is encrypted only once.
+ * Generates a random AES-256-GCM key for encrypting all chunks of a single
+ * file transfer.  The key is distributed to recipients via ECDH, so each
+ * chunk is encrypted only once.
  */
 export const generateDataKey = async (): Promise<CryptoKey> => {
   return window.crypto.subtle.generateKey(
     { name: 'AES-GCM', length: 256 },
     true,
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   );
 };
 
 /**
- * Exports a data key to a base64 string so it can be encrypted per-recipient via ECDH.
+ * Exports a data key to a base64 string so it can be encrypted per-recipient
+ * via ECDH.
  */
 export const exportDataKey = async (key: CryptoKey): Promise<string> => {
   const raw = await window.crypto.subtle.exportKey('raw', key);
@@ -140,10 +224,10 @@ export const importDataKey = async (b64: string): Promise<CryptoKey> => {
   const raw = base64ToUint8Array(b64);
   return window.crypto.subtle.importKey(
     'raw',
-    raw,
+    toBufferSource(raw),
     { name: 'AES-GCM', length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   );
 };
 
@@ -151,12 +235,15 @@ export const importDataKey = async (b64: string): Promise<CryptoKey> => {
  * Encrypts a raw binary chunk using an AES-GCM data key.
  * Returns IV (12 bytes) prepended to ciphertext as a Uint8Array.
  */
-export const encryptChunk = async (data: Uint8Array, dataKey: CryptoKey): Promise<Uint8Array> => {
+export const encryptChunk = async (
+  data: Uint8Array,
+  dataKey: CryptoKey,
+): Promise<Uint8Array> => {
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await window.crypto.subtle.encrypt(
-    { ...aesGcmParams, iv },
+    { ...aesGcmParams, iv: toBufferSource(iv) },
     dataKey,
-    data
+    toBufferSource(data),
   );
   const combined = new Uint8Array(12 + encrypted.byteLength);
   combined.set(iv);
@@ -167,13 +254,19 @@ export const encryptChunk = async (data: Uint8Array, dataKey: CryptoKey): Promis
 /**
  * Decrypts a binary chunk that was encrypted with encryptChunk.
  */
-export const decryptChunk = async (encryptedData: Uint8Array, dataKey: CryptoKey): Promise<Uint8Array> => {
-  const iv = encryptedData.slice(0, 12);
-  const ciphertext = encryptedData.slice(12);
+export const decryptChunk = async (
+  encryptedData: Uint8Array,
+  dataKey: CryptoKey,
+): Promise<Uint8Array> => {
+  // Fix #2: Zero-copy subarray views instead of slice() copies.
+  // Avoids allocating and copying ~1MB for the ciphertext portion of each
+  // chunk.  SubtleCrypto.decrypt() accepts ArrayBufferView, so this is safe.
+  const iv = encryptedData.subarray(0, 12);
+  const ciphertext = encryptedData.subarray(12);
   const decrypted = await window.crypto.subtle.decrypt(
-    { ...aesGcmParams, iv },
+    { ...aesGcmParams, iv: toBufferSource(iv) },
     dataKey,
-    ciphertext
+    toBufferSource(ciphertext),
   );
   return new Uint8Array(decrypted);
 };

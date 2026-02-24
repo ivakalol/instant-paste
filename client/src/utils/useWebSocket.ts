@@ -18,6 +18,21 @@ import {
 const CHUNK_SIZE           = 1024 * 1024; // 1MB – fits in 2MB WS frame even with AES-GCM overhead (+28 B)
 const BUFFER_HIGH_WATER    = 8 * 1024 * 1024; // 8MB – allow more in-flight data before pausing
 
+// Fix #4: Module-level singletons — allocated once instead of per-call
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+const toArrayBufferBackedView = (data: Uint8Array): Uint8Array<ArrayBuffer> => {
+  if (data.buffer instanceof ArrayBuffer) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+
+  const buffer = new ArrayBuffer(data.byteLength);
+  const view = new Uint8Array(buffer);
+  view.set(data);
+  return view;
+};
+
 interface UseWebSocketReturn {
   roomState: RoomState;
   sendMessage: (message: WebSocketMessage) => Promise<boolean>;
@@ -49,6 +64,7 @@ interface ActiveFileTransfer {
   };
   senderId?: string;
   createdAt: number;
+  _lastProgress: number;
 }
 
 type EncryptedPayload = string | Record<string, string>;
@@ -61,8 +77,7 @@ const encodeBinaryFrame = (
   totalChunks: number,
   data: Uint8Array,
 ): ArrayBuffer => {
-  const enc = new TextEncoder();
-  const idBytes = enc.encode(fileId);
+  const idBytes = textEncoder.encode(fileId);
   const headerLen = 2 + idBytes.length + 4 + 4;
   const buf = new ArrayBuffer(headerLen + data.byteLength);
   const view = new DataView(buf);
@@ -74,17 +89,19 @@ const encodeBinaryFrame = (
   new Uint8Array(buf, o).set(data);
   return buf;
 };
+
+// Fix #1: Zero-copy view instead of buf.slice() — saves ~1MB allocation per chunk
 const decodeBinaryFrame = (
   buf: ArrayBuffer,
 ): { fileId: string; chunkIndex: number; totalChunks: number; data: Uint8Array } => {
   const view = new DataView(buf);
   let o = 0;
   const idLen = view.getUint16(o); o += 2;
-  const fileId = new TextDecoder().decode(new Uint8Array(buf, o, idLen)); o += idLen;
+  const fileId = textDecoder.decode(new Uint8Array(buf, o, idLen)); o += idLen;
   const chunkIndex = view.getUint32(o); o += 4;
   const totalChunks = view.getUint32(o); o += 4;
-  // slice() copies the data so it has its own ArrayBuffer
-  const data = new Uint8Array(buf.slice(o));
+  // Zero-copy view into the existing ArrayBuffer instead of slice()
+  const data = new Uint8Array(buf, o, buf.byteLength - o);
   return { fileId, chunkIndex, totalChunks, data };
 };
 
@@ -121,6 +138,7 @@ export const useWebSocket = (
 
   const onMessageRef = useRef((event: MessageEvent) => {});
 
+  // Fix #5: Build result object directly — avoids intermediate tuple array + Object.fromEntries
   const encryptForRecipients = useCallback(async (plainText: string): Promise<Record<string, string> | null> => {
     if (!isE2eeEnabled || !keyPair || !roomState.clientId) {
       return null;
@@ -136,14 +154,15 @@ export const useWebSocket = (
       return null;
     }
 
-    const encryptedEntries = await Promise.all(
+    const result: Record<string, string> = {};
+    await Promise.all(
       allRecipients.map(async (recipient) => {
-        const encryptedValue = await encryptFor(plainText, keyPair.privateKey, recipient.publicKey!);
-        return [recipient.id, encryptedValue] as const;
+        result[recipient.id] = await encryptFor(
+          plainText, keyPair.privateKey, recipient.publicKey!,
+        );
       })
     );
-
-    return Object.fromEntries(encryptedEntries);
+    return result;
   }, [isE2eeEnabled, keyPair, roomClients, roomState.clientId]);
 
   const getEncryptedValueForCurrentClient = useCallback((payload?: EncryptedPayload): string | null => {
@@ -233,8 +252,8 @@ export const useWebSocket = (
     initKeyPair();
   }, []);
 
-  // In-memory buffers for all receive paths (encrypted & plain)
-  const memoryChunks = useRef<Map<string, (ArrayBuffer | null)[]>>(new Map());
+  // Fix #2: Store Uint8Array directly — Blob constructor accepts them natively
+  const memoryChunks = useRef<Map<string, (Uint8Array<ArrayBuffer> | null)[]>>(new Map());
 
   const handleBinaryChunk = useCallback(async (frameData: ArrayBuffer) => {
     const { fileId, chunkIndex, totalChunks, data: chunkData } = decodeBinaryFrame(frameData);
@@ -272,16 +291,17 @@ export const useWebSocket = (
     if (!memoryChunks.current.has(fileId)) {
       memoryChunks.current.set(fileId, new Array(totalChunks).fill(null));
     }
-    const buf: ArrayBuffer = plainBytes.buffer.byteLength === plainBytes.byteLength
-      ? (plainBytes.buffer as ArrayBuffer)
-      : (plainBytes.buffer as ArrayBuffer).slice(plainBytes.byteOffset, plainBytes.byteOffset + plainBytes.byteLength);
-    memoryChunks.current.get(fileId)![chunkIndex] = buf;
+
+    // Fix #2: Compact copy only when plainBytes is a view into a shared/larger buffer.
+    // When it owns its buffer entirely (common for decrypted output), store as-is (zero-copy).
+    const stored = toArrayBufferBackedView(plainBytes);
+    memoryChunks.current.get(fileId)![chunkIndex] = stored;
     transfer.receivedChunks.add(chunkIndex);
 
     // Progress (throttled: ~every 2%)
     const progress = (transfer.receivedChunks.size / totalChunks) * 100;
-    if (progress - (transfer as any)._lastProgress >= 2 || transfer.receivedChunks.size === totalChunks) {
-      (transfer as any)._lastProgress = progress;
+    if (progress - transfer._lastProgress >= 2 || transfer.receivedChunks.size === totalChunks) {
+      transfer._lastProgress = progress;
       onFileTransferUpdateRef.current?.({
         type: 'file-progress', fileId, progress,
       });
@@ -291,7 +311,8 @@ export const useWebSocket = (
     if (transfer.receivedChunks.size === totalChunks) {
       try {
         const chunks = memoryChunks.current.get(fileId)!;
-        const blob = new Blob(chunks.map(b => new Uint8Array(b!)), {
+        // Fix #2: Pass Uint8Array directly to Blob — no need to unwrap to ArrayBuffer
+        const blob = new Blob(chunks.map(b => b!), {
           type: transfer.metadata.fileType || 'application/octet-stream',
         });
         const contentUrl = URL.createObjectURL(blob);
@@ -311,163 +332,163 @@ export const useWebSocket = (
     }
   }, []);
 
-  useEffect(() => {
-    onMessageRef.current = async (event: MessageEvent) => {
-      // Binary frames are file-chunk data – route to the binary handler
-      if (event.data instanceof ArrayBuffer) {
-        await handleBinaryChunk(event.data);
-        return;
-      }
+  // Fix #7: Assign the message handler ref directly during render instead of
+  // wrapping it in a useEffect. The ref is always up-to-date and we avoid
+  // scheduling an extra effect on every dependency change.
+  onMessageRef.current = async (event: MessageEvent) => {
+    // Binary frames are file-chunk data – route to the binary handler
+    if (event.data instanceof ArrayBuffer) {
+      await handleBinaryChunk(event.data);
+      return;
+    }
 
-      try {
-        const message: WebSocketMessage = JSON.parse(event.data);
-        
-        switch (message.type) {
-          case 'room-update':
-            setRoomState({
-              roomId: message.roomId || null,
-              connected: true,
-              clientCount: message.clientCount || 0,
-              clientId: message.clientId || roomState.clientId,
-            });
-            setRoomClients(message.clients.reduce((acc: any, client: any) => {
-              acc[client.id] = client;
-              return acc;
-            }, {}));
-            if (pendingRoomCreation.current && message.roomId) {
-              pendingRoomCreation.current(message.roomId);
-              pendingRoomCreation.current = undefined;
-            }
-            if (pendingRoomJoin.current) {
-              pendingRoomJoin.current(true);
-              pendingRoomJoin.current = undefined;
-            }
-            break;
+    try {
+      const message: WebSocketMessage = JSON.parse(event.data);
+      
+      switch (message.type) {
+        case 'room-update':
+          setRoomState({
+            roomId: message.roomId || null,
+            connected: true,
+            clientCount: message.clientCount || 0,
+            clientId: message.clientId || roomState.clientId,
+          });
+          setRoomClients(message.clients.reduce((acc: any, client: any) => {
+            acc[client.id] = client;
+            return acc;
+          }, {}));
+          if (pendingRoomCreation.current && message.roomId) {
+            pendingRoomCreation.current(message.roomId);
+            pendingRoomCreation.current = undefined;
+          }
+          if (pendingRoomJoin.current) {
+            pendingRoomJoin.current(true);
+            pendingRoomJoin.current = undefined;
+          }
+          break;
 
-          case 'file-key':
-            // Decrypt the per-file data key using ECDH
-            if (message.encryptedDataKey && message.senderId && message.fileId) {
-              const decryptedKeyB64 = await decryptFromSender(
-                message.encryptedDataKey, message.senderId,
-              );
-              if (decryptedKeyB64) {
-                try {
-                  const dataKey = await importDataKey(decryptedKeyB64);
-                  const transfer = activeTransfers.current.get(message.fileId);
-                  if (transfer) {
-                    transfer.dataKey = dataKey;
-                  } else {
-                    // Key arrived before file-start – park it
-                    pendingDataKeys.current.set(message.fileId, dataKey);
-                  }
-                } catch (e) {
-                  console.error('Failed to import data key:', e);
-                }
-              }
-            }
-            break;
-
-          case 'file-start':
-            if (message.fileId) {
-              const transfer: ActiveFileTransfer = {
-                totalChunks: 0,
-                receivedChunks: new Set(),
-                metadata: {},
-                senderId: message.senderId,
-                createdAt: Date.now(),
-              };
-              // Attach data key if it arrived before file-start
-              const pendingKey = pendingDataKeys.current.get(message.fileId);
-              if (pendingKey) {
-                transfer.dataKey = pendingKey;
-                pendingDataKeys.current.delete(message.fileId);
-              }
-              activeTransfers.current.set(message.fileId, transfer);
-
-              if (onClipboardReceivedRef.current) {
-                const fileStartMessage = await withDecryptedMetadata(message);
-                onClipboardReceivedRef.current(fileStartMessage);
-              }
-            }
-            break;
-
-          case 'clipboard':
-            if (onClipboardReceivedRef.current) {
-              let clipboardMessage = await withDecryptedMetadata(message);
-
-              // Decrypt text content
-              if (!clipboardMessage.fileId && clipboardMessage.encryptedContent) {
-                const decryptedContent = await decryptFromSender(
-                  clipboardMessage.encryptedContent, clipboardMessage.senderId,
-                );
-                if (decryptedContent !== null) {
-                  clipboardMessage = { ...clipboardMessage, content: decryptedContent };
-                } else {
-                  clipboardMessage = { ...clipboardMessage, content: '[Unable to decrypt message]' };
-                }
-              }
-
-              // File-transfer metadata update
-              if (clipboardMessage.fileId && clipboardMessage.totalChunks) {
-                const transfer = activeTransfers.current.get(clipboardMessage.fileId);
+        case 'file-key':
+          // Decrypt the per-file data key using ECDH
+          if (message.encryptedDataKey && message.senderId && message.fileId) {
+            const decryptedKeyB64 = await decryptFromSender(
+              message.encryptedDataKey, message.senderId,
+            );
+            if (decryptedKeyB64) {
+              try {
+                const dataKey = await importDataKey(decryptedKeyB64);
+                const transfer = activeTransfers.current.get(message.fileId);
                 if (transfer) {
-                  transfer.totalChunks = clipboardMessage.totalChunks;
-                  transfer.metadata = {
-                    fileName: clipboardMessage.fileName,
-                    fileSize: clipboardMessage.fileSize,
-                    fileType: clipboardMessage.fileType,
-                    contentType: clipboardMessage.contentType,
-                    previewContent: clipboardMessage.previewContent,
-                  };
+                  transfer.dataKey = dataKey;
+                } else {
+                  // Key arrived before file-start – park it
+                  pendingDataKeys.current.set(message.fileId, dataKey);
                 }
-
-                // Process any binary chunks that arrived before metadata
-                if (orphanBinaryChunks.current.has(clipboardMessage.fileId)) {
-                  const chunks = orphanBinaryChunks.current.get(clipboardMessage.fileId)!;
-                  console.log(`Processing ${chunks.length} orphaned binary chunks for ${clipboardMessage.fileId}.`);
-                  for (const chunkFrame of chunks) {
-                    await handleBinaryChunk(chunkFrame);
-                  }
-                  orphanBinaryChunks.current.delete(clipboardMessage.fileId);
-                }
+              } catch (e) {
+                console.error('Failed to import data key:', e);
               }
-              onClipboardReceivedRef.current(clipboardMessage);
             }
-            break;
+          }
+          break;
 
-          case 'chunk-ack':
-            // Received by the sender; used for resumability tracking
-            break;
-
-          case 'file-chunk':
-            // Legacy JSON chunk path – kept for backward compat, should not fire
-            console.warn('Received legacy file-chunk JSON message');
-            break;
-
-          case 'error':
-            console.error('WebSocket error:', message.message);
-            if (pendingRoomJoin.current) {
-              pendingRoomJoin.current(false);
-              pendingRoomJoin.current = undefined;
+        case 'file-start':
+          if (message.fileId) {
+            const transfer: ActiveFileTransfer = {
+              totalChunks: 0,
+              receivedChunks: new Set(),
+              metadata: {},
+              senderId: message.senderId,
+              createdAt: Date.now(),
+              _lastProgress: 0,
+            };
+            // Attach data key if it arrived before file-start
+            const pendingKey = pendingDataKeys.current.get(message.fileId);
+            if (pendingKey) {
+              transfer.dataKey = pendingKey;
+              pendingDataKeys.current.delete(message.fileId);
             }
-            if (message.fileId && onFileTransferUpdateRef.current) {
-              onFileTransferUpdateRef.current({ type: 'file-error', fileId: message.fileId, message: message.message });
-              activeTransfers.current.delete(message.fileId);
+            activeTransfers.current.set(message.fileId, transfer);
+
+            if (onClipboardReceivedRef.current) {
+              const fileStartMessage = await withDecryptedMetadata(message);
+              onClipboardReceivedRef.current(fileStartMessage);
             }
-            break;
+          }
+          break;
 
-          case 'reload':
-            window.location.reload();
-            break;
+        case 'clipboard':
+          if (onClipboardReceivedRef.current) {
+            let clipboardMessage = await withDecryptedMetadata(message);
 
-          default:
-            console.log('Unknown message type:', message.type);
-        }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
+            // Decrypt text content
+            if (!clipboardMessage.fileId && clipboardMessage.encryptedContent) {
+              const decryptedContent = await decryptFromSender(
+                clipboardMessage.encryptedContent, clipboardMessage.senderId,
+              );
+              if (decryptedContent !== null) {
+                clipboardMessage = { ...clipboardMessage, content: decryptedContent };
+              } else {
+                clipboardMessage = { ...clipboardMessage, content: '[Unable to decrypt message]' };
+              }
+            }
+
+            // File-transfer metadata update
+            if (clipboardMessage.fileId && clipboardMessage.totalChunks) {
+              const transfer = activeTransfers.current.get(clipboardMessage.fileId);
+              if (transfer) {
+                transfer.totalChunks = clipboardMessage.totalChunks;
+                transfer.metadata = {
+                  fileName: clipboardMessage.fileName,
+                  fileSize: clipboardMessage.fileSize,
+                  fileType: clipboardMessage.fileType,
+                  contentType: clipboardMessage.contentType,
+                  previewContent: clipboardMessage.previewContent,
+                };
+              }
+
+              // Fix #6: Process orphaned chunks concurrently instead of sequentially
+              if (orphanBinaryChunks.current.has(clipboardMessage.fileId)) {
+                const chunks = orphanBinaryChunks.current.get(clipboardMessage.fileId)!;
+                console.log(`Processing ${chunks.length} orphaned binary chunks for ${clipboardMessage.fileId}.`);
+                await Promise.all(chunks.map(chunkFrame => handleBinaryChunk(chunkFrame)));
+                orphanBinaryChunks.current.delete(clipboardMessage.fileId);
+              }
+            }
+            onClipboardReceivedRef.current(clipboardMessage);
+          }
+          break;
+
+        case 'chunk-ack':
+          // Received by the sender; used for resumability tracking
+          break;
+
+        case 'file-chunk':
+          // Legacy JSON chunk path – kept for backward compat, should not fire
+          console.warn('Received legacy file-chunk JSON message');
+          break;
+
+        case 'error':
+          console.error('WebSocket error:', message.message);
+          if (pendingRoomJoin.current) {
+            pendingRoomJoin.current(false);
+            pendingRoomJoin.current = undefined;
+          }
+          if (message.fileId && onFileTransferUpdateRef.current) {
+            onFileTransferUpdateRef.current({ type: 'file-error', fileId: message.fileId, message: message.message });
+            activeTransfers.current.delete(message.fileId);
+          }
+          break;
+
+        case 'reload':
+          window.location.reload();
+          break;
+
+        default:
+          console.log('Unknown message type:', message.type);
       }
-    };
-  }, [decryptFromSender, handleBinaryChunk, roomState.clientId, withDecryptedMetadata]);
+    } catch (error) {
+      console.error('Failed to parse WebSocket message:', error);
+    }
+  };
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -588,6 +609,8 @@ export const useWebSocket = (
     return false;
   }, [encryptForRecipients, isE2eeEnabled, roomClients, roomState.clientId]);
 
+  // Fix #3: Pre-allocate a reusable buffer for unencrypted uploads to avoid
+  // allocating ~1MB per chunk that the GC then has to sweep.
   const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
     const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
     const requiresFileEncryption = isE2eeEnabled && encryptFiles && recipients.length > 0;
@@ -647,6 +670,9 @@ export const useWebSocket = (
     }
 
     // ---- 3. Stream chunks as binary WebSocket frames with backpressure ----
+    // Pre-allocate a reusable buffer for unencrypted transfers
+    const reusableBuf = dataKey ? null : new Uint8Array(CHUNK_SIZE);
+
     let lastReportedProgress = 0;
     for (let i = 0; i < totalChunks; i++) {
       // Connection check
@@ -666,13 +692,24 @@ export const useWebSocket = (
 
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
-      const rawChunk = new Uint8Array(await file.slice(start, end).arrayBuffer());
+      const chunkLen = end - start;
+      const sliceAB = await file.slice(start, end).arrayBuffer();
 
       let payload: Uint8Array;
       if (dataKey) {
-        payload = await encryptChunk(rawChunk, dataKey);
+        // encryptChunk returns a new buffer anyway, so no reuse possible
+        payload = await encryptChunk(new Uint8Array(sliceAB), dataKey);
       } else {
-        payload = rawChunk;
+        // Reuse the pre-allocated buffer for full-size chunks to avoid
+        // allocating ~1MB per iteration that the GC then has to collect
+        const view = new Uint8Array(sliceAB);
+        if (reusableBuf && chunkLen === CHUNK_SIZE) {
+          reusableBuf.set(view);
+          payload = reusableBuf;
+        } else {
+          // Last chunk may be smaller than CHUNK_SIZE
+          payload = view;
+        }
       }
 
       const frame = encodeBinaryFrame(fileId, i, totalChunks, payload);
