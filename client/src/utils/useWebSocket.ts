@@ -22,15 +22,18 @@ const BUFFER_HIGH_WATER    = 8 * 1024 * 1024; // 8MB – allow more in-flight da
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-const toArrayBufferBackedView = (data: Uint8Array): Uint8Array<ArrayBuffer> => {
-  if (data.buffer instanceof ArrayBuffer) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+const toBlobArrayBuffer = (data: Uint8Array): ArrayBuffer => {
+  if (
+    data.buffer instanceof ArrayBuffer
+    && data.byteOffset === 0
+    && data.byteLength === data.buffer.byteLength
+  ) {
+    return data.buffer;
   }
 
   const buffer = new ArrayBuffer(data.byteLength);
-  const view = new Uint8Array(buffer);
-  view.set(data);
-  return view;
+  new Uint8Array(buffer).set(data);
+  return buffer;
 };
 
 interface UseWebSocketReturn {
@@ -253,7 +256,7 @@ export const useWebSocket = (
   }, []);
 
   // Fix #2: Store Uint8Array directly — Blob constructor accepts them natively
-  const memoryChunks = useRef<Map<string, (Uint8Array<ArrayBuffer> | null)[]>>(new Map());
+  const memoryChunks = useRef<Map<string, (ArrayBuffer | null)[]>>(new Map());
 
   const handleBinaryChunk = useCallback(async (frameData: ArrayBuffer) => {
     const { fileId, chunkIndex, totalChunks, data: chunkData } = decodeBinaryFrame(frameData);
@@ -294,7 +297,7 @@ export const useWebSocket = (
 
     // Fix #2: Compact copy only when plainBytes is a view into a shared/larger buffer.
     // When it owns its buffer entirely (common for decrypted output), store as-is (zero-copy).
-    const stored = toArrayBufferBackedView(plainBytes);
+    const stored = toBlobArrayBuffer(plainBytes);
     memoryChunks.current.get(fileId)![chunkIndex] = stored;
     transfer.receivedChunks.add(chunkIndex);
 
