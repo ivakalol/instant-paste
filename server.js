@@ -569,6 +569,51 @@ function handleFileStart(ws, data) {
   broadcastToRoom(ws.roomId, message, ws);
 }
 
+function handleBinaryRelay(ws, data) {
+  if (!ws.roomId) {
+    // Binary frame from a client not in a room – ignore
+    return;
+  }
+  if (!checkRateLimit(ws)) {
+    sendError(ws, ERROR_CODES.RATE_LIMITED, 'Too many messages. Please slow down.');
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+  room.lastActivity = Date.now();
+
+  // Relay binary frame as-is to every other client in the room
+  room.clients.forEach(({ ws: client }) => {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
+      client.send(data, { binary: true });
+    }
+  });
+  metrics.messagesRelayed++;
+}
+
+function handleFileKey(ws, data) {
+  if (!ws.roomId) {
+    sendError(ws, ERROR_CODES.NOT_IN_ROOM, 'Not in a room');
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+  room.lastActivity = Date.now();
+  broadcastToRoom(ws.roomId, { ...data, senderId: ws.id }, ws);
+  log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Relaying 'file-key' for file ${data.fileId} from ${ws.id}`);
+}
+
+function handleChunkAck(ws, data) {
+  if (!ws.roomId) {
+    sendError(ws, ERROR_CODES.NOT_IN_ROOM, 'Not in a room');
+    return;
+  }
+  const room = rooms.get(ws.roomId);
+  if (!room) return;
+  room.lastActivity = Date.now();
+  broadcastToRoom(ws.roomId, { ...data, senderId: ws.id }, ws);
+}
+
 // =============================================================================
 // WEBSOCKET CONNECTION HANDLER
 // =============================================================================
@@ -586,8 +631,14 @@ wss.on('connection', (ws, request) => {
     ws.isAlive = true;
   });
 
-  ws.on('message', (message) => {
+  ws.on('message', (message, isBinary) => {
     try {
+      // Binary frames are file-chunk data – relay without parsing
+      if (isBinary) {
+        handleBinaryRelay(ws, message);
+        return;
+      }
+
       // Check rate limit
       if (!checkRateLimit(ws)) {
         sendError(ws, ERROR_CODES. RATE_LIMITED, 'Too many messages.  Please slow down.');
@@ -619,6 +670,12 @@ wss.on('connection', (ws, request) => {
           break;
         case 'file-start':
           handleFileStart(ws, data);
+          break;
+        case 'file-key':
+          handleFileKey(ws, data);
+          break;
+        case 'chunk-ack':
+          handleChunkAck(ws, data);
           break;
         default:
           log(LOG_LEVELS.WARN, `[ROOM ${ws.roomId}] Unknown message type from ${ws.id}: `, data.type);

@@ -18,8 +18,9 @@ export interface WebSocketMessage {
   fileSize?: number;
   fileType?: string;
   fileId?: string;
-  chunk?: string; // Base64 encoded chunk
-  encryptedChunk?: string | Record<string, string>;
+  chunk?: string; // Base64 encoded chunk (legacy)
+  encryptedChunk?: string | Record<string, string>; // (legacy)
+  encryptedDataKey?: string | Record<string, string>; // Per-recipient encrypted data key for file transfers
   chunkIndex?: number;
   totalChunks?: number;
   progress?: number; // 0-100

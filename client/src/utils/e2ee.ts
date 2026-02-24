@@ -15,6 +15,30 @@ export interface E2eeKeyPair {
   privateKey: JsonWebKey;
 }
 
+const BINARY_STRING_CHUNK_SIZE = 0x8000;
+
+const uint8ArrayToBase64 = (bytes: Uint8Array): string => {
+  let binary = '';
+
+  for (let i = 0; i < bytes.length; i += BINARY_STRING_CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, i + BINARY_STRING_CHUNK_SIZE);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+};
+
+const base64ToUint8Array = (base64: string): Uint8Array => {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+};
+
 /**
  * Generates a new ECDH key pair for E2EE.
  */
@@ -60,7 +84,7 @@ export const encryptFor = async (data: string, privateKey: JsonWebKey, publicKey
   combined.set(iv);
   combined.set(new Uint8Array(encryptedData), iv.length);
   
-  return btoa(String.fromCharCode.apply(null, Array.from(combined)));
+  return uint8ArrayToBase64(combined);
 };
 
 /**
@@ -70,7 +94,7 @@ export const decryptFrom = async (encryptedDataB64: string, privateKey: JsonWebK
   try {
     const sharedSecret = await deriveSharedSecret(privateKey, publicKey);
     
-    const combined = new Uint8Array(Array.from(atob(encryptedDataB64), c => c.charCodeAt(0)));
+    const combined = base64ToUint8Array(encryptedDataB64);
     const iv = combined.slice(0, 12);
     const encryptedData = combined.slice(12);
     
@@ -85,4 +109,71 @@ export const decryptFrom = async (encryptedDataB64: string, privateKey: JsonWebK
     console.error('Decryption failed', e);
     return null;
   }
+};
+
+// ====== Room Data Key (efficient single-encrypt for file chunks) ======
+
+/**
+ * Generates a random AES-256-GCM key for encrypting all chunks of a single file transfer.
+ * The key is distributed to recipients via ECDH, so each chunk is encrypted only once.
+ */
+export const generateDataKey = async (): Promise<CryptoKey> => {
+  return window.crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+};
+
+/**
+ * Exports a data key to a base64 string so it can be encrypted per-recipient via ECDH.
+ */
+export const exportDataKey = async (key: CryptoKey): Promise<string> => {
+  const raw = await window.crypto.subtle.exportKey('raw', key);
+  return uint8ArrayToBase64(new Uint8Array(raw));
+};
+
+/**
+ * Imports a data key from a base64 string after ECDH decryption.
+ */
+export const importDataKey = async (b64: string): Promise<CryptoKey> => {
+  const raw = base64ToUint8Array(b64);
+  return window.crypto.subtle.importKey(
+    'raw',
+    raw,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+};
+
+/**
+ * Encrypts a raw binary chunk using an AES-GCM data key.
+ * Returns IV (12 bytes) prepended to ciphertext as a Uint8Array.
+ */
+export const encryptChunk = async (data: Uint8Array, dataKey: CryptoKey): Promise<Uint8Array> => {
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await window.crypto.subtle.encrypt(
+    { ...aesGcmParams, iv },
+    dataKey,
+    data
+  );
+  const combined = new Uint8Array(12 + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), 12);
+  return combined;
+};
+
+/**
+ * Decrypts a binary chunk that was encrypted with encryptChunk.
+ */
+export const decryptChunk = async (encryptedData: Uint8Array, dataKey: CryptoKey): Promise<Uint8Array> => {
+  const iv = encryptedData.slice(0, 12);
+  const ciphertext = encryptedData.slice(12);
+  const decrypted = await window.crypto.subtle.decrypt(
+    { ...aesGcmParams, iv },
+    dataKey,
+    ciphertext
+  );
+  return new Uint8Array(decrypted);
 };
