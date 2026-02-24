@@ -12,15 +12,11 @@ import {
   decryptChunk,
 } from './e2ee';
 import {
-  storeChunk,
-  saveCheckpoint,
-  assembleFile,
-  deleteTransfer,
   cleanupStaleTransfers,
 } from './fileChunkStore';
 
-const CHUNK_SIZE = 256 * 1024; // 256KB – tuned for mobile / tunnel links
-const BUFFER_HIGH_WATER = 4 * 1024 * 1024; // 4MB – sender pauses when ws.bufferedAmount exceeds this
+const CHUNK_SIZE           = 1024 * 1024; // 1MB – fits in 2MB WS frame even with AES-GCM overhead (+28 B)
+const BUFFER_HIGH_WATER    = 8 * 1024 * 1024; // 8MB – allow more in-flight data before pausing
 
 interface UseWebSocketReturn {
   roomState: RoomState;
@@ -237,6 +233,9 @@ export const useWebSocket = (
     initKeyPair();
   }, []);
 
+  // In-memory buffers for all receive paths (encrypted & plain)
+  const memoryChunks = useRef<Map<string, (ArrayBuffer | null)[]>>(new Map());
+
   const handleBinaryChunk = useCallback(async (frameData: ArrayBuffer) => {
     const { fileId, chunkIndex, totalChunks, data: chunkData } = decodeBinaryFrame(frameData);
 
@@ -250,14 +249,14 @@ export const useWebSocket = (
       return;
     }
 
-    // Skip duplicates (resumable-transfer scenario)
+    // Skip duplicates
     if (transfer.receivedChunks.has(chunkIndex)) return;
 
-    // Decrypt if E2EE data key is present, otherwise use raw bytes
-    let plainData: Uint8Array;
+    // Decrypt if encrypted, otherwise use raw bytes
+    let plainBytes: Uint8Array;
     if (transfer.dataKey) {
       try {
-        plainData = await decryptChunk(chunkData, transfer.dataKey);
+        plainBytes = await decryptChunk(chunkData, transfer.dataKey);
       } catch (e) {
         console.error(`Chunk ${chunkIndex} decryption failed for ${fileId}:`, e);
         onFileTransferUpdateRef.current?.({
@@ -266,45 +265,35 @@ export const useWebSocket = (
         return;
       }
     } else {
-      plainData = chunkData;
+      plainBytes = chunkData;
     }
 
-    // Persist to IndexedDB (never held entirely in RAM)
-    const buf = plainData.buffer.byteLength === plainData.byteLength
-      ? plainData.buffer
-      : plainData.buffer.slice(plainData.byteOffset, plainData.byteOffset + plainData.byteLength);
-    await storeChunk(fileId, chunkIndex, buf);
+    // Store in memory
+    if (!memoryChunks.current.has(fileId)) {
+      memoryChunks.current.set(fileId, new Array(totalChunks).fill(null));
+    }
+    const buf: ArrayBuffer = plainBytes.buffer.byteLength === plainBytes.byteLength
+      ? (plainBytes.buffer as ArrayBuffer)
+      : (plainBytes.buffer as ArrayBuffer).slice(plainBytes.byteOffset, plainBytes.byteOffset + plainBytes.byteLength);
+    memoryChunks.current.get(fileId)![chunkIndex] = buf;
     transfer.receivedChunks.add(chunkIndex);
 
-    // Checkpoint for resumability
-    await saveCheckpoint({
-      fileId,
-      totalChunks,
-      receivedCount: transfer.receivedChunks.size,
-      receivedSet: Array.from(transfer.receivedChunks),
-      metadata: transfer.metadata,
-      createdAt: transfer.createdAt,
-      updatedAt: Date.now(),
-    });
-
-    // Send ACK back to sender (via server relay)
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ type: 'chunk-ack', fileId, chunkIndex }));
+    // Progress (throttled: ~every 2%)
+    const progress = (transfer.receivedChunks.size / totalChunks) * 100;
+    if (progress - (transfer as any)._lastProgress >= 2 || transfer.receivedChunks.size === totalChunks) {
+      (transfer as any)._lastProgress = progress;
+      onFileTransferUpdateRef.current?.({
+        type: 'file-progress', fileId, progress,
+      });
     }
 
-    // Progress
-    const progress = (transfer.receivedChunks.size / totalChunks) * 100;
-    onFileTransferUpdateRef.current?.({
-      type: 'file-progress', fileId, progress,
-    });
-
-    // Completion – assemble from IndexedDB
+    // Completion – assemble from memory
     if (transfer.receivedChunks.size === totalChunks) {
       try {
-        const blob = await assembleFile(
-          fileId, totalChunks,
-          transfer.metadata.fileType || 'application/octet-stream',
-        );
+        const chunks = memoryChunks.current.get(fileId)!;
+        const blob = new Blob(chunks.map(b => new Uint8Array(b!)), {
+          type: transfer.metadata.fileType || 'application/octet-stream',
+        });
         const contentUrl = URL.createObjectURL(blob);
         console.log(`[useWebSocket] File complete: fileId=${fileId}, contentUrl=${contentUrl}`);
         onFileTransferUpdateRef.current?.({
@@ -316,7 +305,7 @@ export const useWebSocket = (
           type: 'file-error', fileId, message: 'File assembly failed',
         });
       } finally {
-        await deleteTransfer(fileId).catch(() => {});
+        memoryChunks.current.delete(fileId);
         activeTransfers.current.delete(fileId);
       }
     }
@@ -600,9 +589,9 @@ export const useWebSocket = (
   }, [encryptForRecipients, isE2eeEnabled, roomClients, roomState.clientId]);
 
   const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
     const requiresFileEncryption = isE2eeEnabled && encryptFiles && recipients.length > 0;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
     // ---- 1. Generate & distribute per-file data key (encrypted once per recipient via ECDH) ----
     let dataKey: CryptoKey | undefined;

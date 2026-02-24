@@ -144,16 +144,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 540px;
-  overflow-y: auto;
-  padding-right: 4px;
 }
-
-/* Scrollbar */
-.clips__list::-webkit-scrollbar { width: 5px; }
-.clips__list::-webkit-scrollbar-track { background: transparent; }
-.clips__list::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
-.clips__list::-webkit-scrollbar-thumb:hover { background: var(--secondary-color); }
 
 /* Empty state */
 .clips__empty {
@@ -179,7 +170,6 @@
   background: var(--card-background);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  overflow: hidden;
   transition: box-shadow 0.15s, border-color 0.15s;
 }
 
