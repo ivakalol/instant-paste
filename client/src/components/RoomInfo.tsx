@@ -10,6 +10,8 @@ interface RoomInfoProps {
   encryptionEnabled: boolean;
   autoCopyEnabled: boolean;
   onToggleAutoCopy: (enabled: boolean) => void;
+  encryptFilesEnabled: boolean;
+  onToggleEncryptFiles: (enabled: boolean) => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onClearAll: () => void;
 }
@@ -20,6 +22,8 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   encryptionEnabled,
   autoCopyEnabled,
   onToggleAutoCopy,
+  encryptFilesEnabled,
+  onToggleEncryptFiles,
   showToast,
   onClearAll
 }) => {
@@ -45,66 +49,99 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   return (
     <>
       <div className="room-info">
+        {/* ── Top row: room identity + quick actions ── */}
         <div className="room-header">
           <div className="room-details">
-            <h2>Room: {roomState.roomId}</h2>
+            <h2 className="room-title">
+              <span className="room-label">Room</span>
+              <span className="room-id">{roomState.roomId}</span>
+            </h2>
             <p className="client-count">
-              <span className={`connection-status ${roomState.connected ? 'connected' : 'disconnected'}`}></span>
-              {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'} connected
+              <span className={`connection-dot ${roomState.connected ? 'connected' : 'disconnected'}`} />
+              {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'}
             </p>
           </div>
+
           <div className="room-actions">
-            <button onClick={() => setShowQrCode(true)} className="btn btn-small" title="Show QR Code to Join">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M8.5 10a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5z"/>
-                <path d="M2 1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h2V2H2zm11-1H5v14h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM3 13.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0-2a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
+            <button onClick={() => setShowQrCode(true)} className="room-btn" title="QR Code">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zm4 0h3v3h-3zm-4 4h3v3h-3zm4 0h3v3h-3z"/>
               </svg>
               QR Code
             </button>
-            <button onClick={copyRoomId} className="btn btn-small" title="Copy Room ID">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M4 1.5H3a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-                <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5zM5 1.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
+            <button onClick={copyRoomId} className="room-btn" title="Copy Room ID">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
               </svg>
               Copy ID
             </button>
-            <button onClick={onLeave} className="btn btn-small btn-danger">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M8.5 10.5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5zm-2 0a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5zm-2 0a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5zm-2 0a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5z"/>
-                <path d="M12 1a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h8zm-1 1H5v10h6V2z"/>
+            <button onClick={onLeave} className="room-btn room-btn--danger" title="Leave Room">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
               </svg>
               Leave
             </button>
           </div>
         </div>
 
-        <div className="encryption-controls">
-          <button 
-            className="btn btn-small"
-            disabled
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        {/* ── Controls row ── */}
+        <div className="controls-row">
+          {/* Encryption badge */}
+          <span className={`badge ${encryptionEnabled ? 'badge--secure' : 'badge--insecure'}`}>
+            <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
               <path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
             </svg>
-            {encryptionEnabled ? 'E2E Encrypted' : 'E2EE Disabled'}
-          </button>
-          
-          <button 
-            onClick={() => onToggleAutoCopy(!autoCopyEnabled)}
-            className={`btn btn-small ${autoCopyEnabled ? 'auto-copy-on' : 'auto-copy-off'}`}
-            title="Auto-copy received text to clipboard"
+            {encryptionEnabled ? 'E2EE' : 'No E2EE'}
+          </span>
+
+          {/* Toggle: Encrypt Files */}
+          <label
+            className={`toggle-pill ${encryptFilesEnabled ? 'toggle-pill--on' : ''} ${!encryptionEnabled ? 'toggle-pill--disabled' : ''}`}
+            title="Toggle end-to-end encryption for file transfers"
           >
-            {autoCopyEnabled ? '[ON] Auto-Copy' : '[OFF] Auto-Copy'}
-          </button>
-          <button onClick={onClearAll} className="btn btn-small btn-danger" title="Delete all clips from history">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-              <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+            <input
+              type="checkbox"
+              checked={encryptFilesEnabled}
+              disabled={!encryptionEnabled}
+              onChange={() => {
+                if (!encryptFilesEnabled) {
+                  const confirmed = window.confirm(
+                    '⚠️ Warning: Encrypting files will significantly slow down uploads and downloads.\n\nEnable file encryption?'
+                  );
+                  if (!confirmed) return;
+                }
+                onToggleEncryptFiles(!encryptFilesEnabled);
+              }}
+            />
+            <span className="toggle-pill__track">
+              <span className="toggle-pill__thumb" />
+            </span>
+            <span className="toggle-pill__label">Encrypt Files</span>
+          </label>
+
+          {/* Toggle: Auto-Copy */}
+          <label className={`toggle-pill ${autoCopyEnabled ? 'toggle-pill--on' : ''}`} title="Auto-copy received text to clipboard">
+            <input
+              type="checkbox"
+              checked={autoCopyEnabled}
+              onChange={() => onToggleAutoCopy(!autoCopyEnabled)}
+            />
+            <span className="toggle-pill__track">
+              <span className="toggle-pill__thumb" />
+            </span>
+            <span className="toggle-pill__label">Auto-Copy</span>
+          </label>
+
+          {/* Clear All — pushed to the end */}
+          <button onClick={onClearAll} className="action-text action-text--danger" title="Delete all clips from history">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
             </svg>
             Clear All
           </button>
         </div>
       </div>
+
       {showQrCode && roomState.roomId && (
         <QRCodeModal
           isOpen={showQrCode}

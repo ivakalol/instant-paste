@@ -8,6 +8,7 @@
     "dev": "node server.js",
     "build:client": "cd client && npm run build",
     "install:all": "npm install && cd client && npm install",
+    "build": "npm install && cd client && npm install && cd .. && npm run build:client",
     "setup": "npm install && cd client && npm install && cd .. && npm run build:client"
   },
   "keywords": [
@@ -29,6 +30,6 @@
     "node": ">=14.0.0"
   },
   "devDependencies": {
-    "baseline-browser-mapping": "^2.9.14"
+    "baseline-browser-mapping": "^2.10.0"
   }
 }

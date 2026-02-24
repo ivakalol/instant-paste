@@ -136,7 +136,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           <div className="feature-item">
             <div className="feature-icon">🔒</div>
             <h4>Private by design</h4>
-            <p>Text is E2E encrypted; file transfers are secured via HTTPS. Full file E2EE coming soon.</p>
+            <p>All Data is end-to-end encrypted using AES-256-GCM with ECDH key exchange — only devices in the room can decrypt</p>
           </div>
           <div className="feature-item">
             <div className="feature-icon">🌐</div>

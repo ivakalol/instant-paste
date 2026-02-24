@@ -31,6 +31,8 @@ interface UseWebSocketReturn {
   leaveRoom: () => void;
   isE2eeEnabled: boolean;
   isReady: boolean;
+  encryptFiles: boolean;
+  setEncryptFiles: (enabled: boolean) => void;
 }
 
 interface RoomClient {
@@ -113,6 +115,7 @@ export const useWebSocket = (
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
   const [isE2eeEnabled, setIsE2eeEnabled] = useState(window.isSecureContext);
   const [isReady, setIsReady] = useState(false);
+  const [encryptFiles, setEncryptFiles] = useState(false);
   const activeTransfers = useRef<Map<string, ActiveFileTransfer>>(new Map());
   const pendingDataKeys = useRef<Map<string, CryptoKey>>(new Map());
   const orphanBinaryChunks = useRef<Map<string, ArrayBuffer[]>>(new Map());
@@ -599,11 +602,11 @@ export const useWebSocket = (
   const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const recipients = Object.values(roomClients).filter(c => c.id !== roomState.clientId);
-    const requiresEncryption = isE2eeEnabled && recipients.length > 0;
+    const requiresFileEncryption = isE2eeEnabled && encryptFiles && recipients.length > 0;
 
     // ---- 1. Generate & distribute per-file data key (encrypted once per recipient via ECDH) ----
     let dataKey: CryptoKey | undefined;
-    if (requiresEncryption) {
+    if (requiresFileEncryption) {
       try {
         dataKey = await generateDataKey();
         const dataKeyB64 = await exportDataKey(dataKey);
@@ -693,7 +696,7 @@ export const useWebSocket = (
         lastReportedProgress = progress;
       }
     }
-  }, [sendMessage, encryptForRecipients, isE2eeEnabled, roomClients, roomState.clientId]);
+  }, [sendMessage, encryptForRecipients, isE2eeEnabled, encryptFiles, roomClients, roomState.clientId]);
 
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -731,5 +734,7 @@ export const useWebSocket = (
     leaveRoom,
     isE2eeEnabled,
     isReady,
+    encryptFiles,
+    setEncryptFiles,
   };
 };

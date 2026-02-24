@@ -182,7 +182,7 @@ const Room: React.FC = () => {
     }
   }, [autoCopyEnabled, showToast, copyTextToClipboard]);
 
-  const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled } = useWebSocket(
+  const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled, encryptFiles, setEncryptFiles } = useWebSocket(
     handleClipboardReceived,
     handleFileTransferUpdate,
     roomId
@@ -380,6 +380,8 @@ const Room: React.FC = () => {
         encryptionEnabled={isE2eeEnabled}
         autoCopyEnabled={autoCopyEnabled}
         onToggleAutoCopy={handleToggleAutoCopy}
+        encryptFilesEnabled={encryptFiles}
+        onToggleEncryptFiles={setEncryptFiles}
         showToast={showToast}
         onClearAll={handleClearAll}
       />
