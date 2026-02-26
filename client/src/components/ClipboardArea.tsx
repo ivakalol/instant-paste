@@ -260,7 +260,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
             </svg>
             Attach
           </button>
-          <input ref={fileInputRef} type="file" multiple accept="image/*,*" onChange={handleFileChange} style={{ display: 'none' }} />
+          <input ref={fileInputRef} type="file" multiple onChange={handleFileChange} style={{ display: 'none' }} />
 
           <span className="compose__hint">Ctrl+Enter to send</span>
 
