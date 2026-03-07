@@ -336,6 +336,16 @@
   background-color: var(--input-background);
 }
 
+.clip-card__media-clickable {
+  cursor: pointer;
+}
+
+.clip-card__media-clickable:hover .media-preview {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  opacity: 0.9;
+}
+
 .file-preview.generating {
   display: flex;
   flex-direction: column;
