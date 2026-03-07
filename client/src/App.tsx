@@ -1,10 +1,10 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import RoomSelector from './components/RoomSelector';
+import RoomSelector from './components/room/RoomSelector';
 import Room from './pages/Room';
-import { useWebSocket } from './utils/useWebSocket';
-import { ThemeProvider } from './components/ThemeContext';
-import ThemeToggle from './components/ThemeToggle';
+import { useWebSocket } from './hooks/useWebSocket';
+import { ThemeProvider } from './context/ThemeContext';
+import ThemeToggle from './components/common/ThemeToggle';
 import './App.css';
 
 const AppContent: React.FC = () => {

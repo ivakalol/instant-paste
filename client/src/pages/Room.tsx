@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import RoomInfo from '../components/RoomInfo';
-import ClipboardArea from '../components/ClipboardArea';
-import Toast from '../components/Toast';
-import { useWebSocket } from '../utils/useWebSocket';
+import RoomInfo from '../components/room/RoomInfo';
+import ClipboardArea from '../components/room/ClipboardArea';
+import Toast from '../components/common/Toast';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { loadHistory, saveHistory, clearHistory } from '../utils/indexedDB';
 import { addRecentRoom } from '../utils/recentRooms';
 import type { ClipboardItem } from '../types/ClipboardItem';
@@ -93,12 +93,14 @@ const Room: React.FC = () => {
         if (update.type === 'file-progress') {
           newItem.progress = update.progress;
         } else if (update.type === 'file-complete') {
-          // Revoke old blob url if it exists and is a blob url
-          if (newItem.content && newItem.content.startsWith('blob:')) {
-            URL.revokeObjectURL(newItem.content);
+          // If content is provided (receiver side), replace old blob url
+          if (update.content) {
+            if (newItem.content && newItem.content.startsWith('blob:')) {
+              URL.revokeObjectURL(newItem.content);
+            }
+            newItem.content = update.content;
           }
           newItem.status = 'complete';
-          newItem.content = update.content!;
           newItem.progress = 100;
         } else if (update.type === 'file-error') {
           showToast(`File transfer failed: ${update.message}`, 'error');
