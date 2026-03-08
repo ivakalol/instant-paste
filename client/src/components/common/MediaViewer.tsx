@@ -1,11 +1,11 @@
 import React, { useEffect, useCallback } from 'react';
-import type { ClipboardItem } from '../../types/ClipboardItem';
+import type { ClipboardItem as ClipboardHistoryItem } from '../../types/ClipboardItem';
 import { downloadFile } from '../../utils/clipboard';
 import { convertBlobToPng } from '../../utils/image';
 import './MediaViewer.css';
 
 interface MediaViewerProps {
-  item: ClipboardItem;
+  item: ClipboardHistoryItem;
   onClose: () => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
@@ -46,22 +46,24 @@ const MediaViewer: React.FC<MediaViewerProps> = ({ item, onClose, showToast }) =
       return;
     }
     try {
-      const response = await fetch(item.content);
-      let blob = await response.blob();
+      // Use the modern promise-based approach for better Safari/iOS compatibility.
+      // Safari requires the clipboard write to be triggered by a user gesture,
+      // and using a Promise inside ClipboardItem helps maintain that context.
+      const clipboardItem = new ClipboardItem({
+        'image/png': (async () => {
+          const response = await fetch(item.content!);
+          const blob = await response.blob();
+          if (blob.type === 'image/png') {
+            return blob;
+          }
+          return await convertBlobToPng(blob);
+        })()
+      });
 
-      const supportedTypes = ['image/png'];
-      if (!supportedTypes.includes(blob.type)) {
-        try {
-          blob = await convertBlobToPng(blob);
-        } catch {
-          showToast('Failed to convert image format for clipboard.', 'error');
-          return;
-        }
-      }
-
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      await navigator.clipboard.write([clipboardItem]);
       showToast('Image copied to clipboard!', 'success');
-    } catch {
+    } catch (error) {
+      console.error('Failed to copy image to clipboard:', error);
       showToast('Failed to copy image.', 'error');
     }
   };

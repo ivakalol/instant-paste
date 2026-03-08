@@ -184,22 +184,22 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           showToast('Full image not yet available.', 'info');
           return;
         }
-        const response = await fetch(item.content);
-        let blob = await response.blob();
-        
-        // Firefox only reliably supports PNG for writing to clipboard. We convert other types (like JPEG, GIF, WebP) to PNG.
-        const supportedTypes = ['image/png'];
-        if (!supportedTypes.includes(blob.type)) {
-            try {
-                blob = await convertBlobToPng(blob);
-            } catch (conversionError) {
-                console.error('Failed to convert image to PNG:', conversionError);
-                showToast('Failed to convert image format for clipboard compatibility.', 'error');
-                return;
-            }
-        }
 
-        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
+        // Use the modern promise-based approach for better Safari/iOS compatibility.
+        // Safari requires the clipboard write to be triggered by a user gesture,
+        // and using a Promise inside ClipboardItem helps maintain that context.
+        const clipboardItem = new ClipboardItem({
+          'image/png': (async () => {
+            const response = await fetch(item.content!);
+            const blob = await response.blob();
+            if (blob.type === 'image/png') {
+              return blob;
+            }
+            return await convertBlobToPng(blob);
+          })()
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
         showToast('Image copied to clipboard!', 'success');
         setCopiedItemId(item.id);
         setTimeout(() => setCopiedItemId(null), 1000);
