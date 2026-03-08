@@ -180,6 +180,10 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
       }
       try {
+        if (!item.content) {
+          showToast('Full image not yet available.', 'info');
+          return;
+        }
         const response = await fetch(item.content);
         let blob = await response.blob();
         
@@ -221,6 +225,10 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       downloadFile(url, filename);
       URL.revokeObjectURL(url);
     } else {
+      if (!item.content) {
+        showToast('Full version not yet available.', 'info');
+        return;
+      }
       downloadFile(item.content, filename);
     }
   };
@@ -315,9 +323,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       </div>
                     ) : (
                       <div
-                        className={(item.type === 'image' || item.type === 'video') && (!item.status || item.status === 'complete') && item.content ? 'clip-card__media-clickable' : undefined}
+                        className={(item.type === 'image' || item.type === 'video') && (!item.status || item.status === 'complete' || item.previewContent) && (item.content || item.previewContent) ? 'clip-card__media-clickable' : undefined}
                         onClick={() => {
-                          if ((item.type === 'image' || item.type === 'video') && (!item.status || item.status === 'complete') && item.content) {
+                          if ((item.type === 'image' || item.type === 'video') && (!item.status || item.status === 'complete' || item.previewContent) && (item.content || item.previewContent)) {
                             setViewerItem(item);
                           }
                         }}

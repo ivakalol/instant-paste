@@ -143,7 +143,7 @@ const Room: React.FC = () => {
             if (item.fileId === message.fileId) {
               return {
                 ...item,
-                content: message.previewContent || '',
+                previewContent: message.previewContent || '',
                 type: message.contentType as ClipboardItem['type'] || item.type,
                 status: 'downloading', // Start showing progress bar
               };
@@ -287,11 +287,11 @@ const Room: React.FC = () => {
       }
     }
     
-    // Update the local UI with the thumbnail or a blob URL for local preview
-    const localPreviewUrl = previewContent || URL.createObjectURL(file);
+    // Update the local UI with the thumbnail and the full file blob URL
+    const fullFileBlobUrl = URL.createObjectURL(file);
     setHistory(prev => prev.map(item => 
       item.id === fileId 
-        ? { ...item, content: localPreviewUrl, status: 'uploading' as const }
+        ? { ...item, previewContent, content: fullFileBlobUrl, status: 'uploading' as const }
         : item
     ));
 

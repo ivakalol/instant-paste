@@ -3,6 +3,7 @@ export interface ClipboardItem {
   fileId?: string; // Unique ID for file transfers
   type: 'text' | 'image' | 'video' | 'file' | 'audio' | 'application';
   content: string;
+  previewContent?: string; // Small compressed variant for initial preview
   timestamp: number;
   name?: string; // To store the original filename
   size?: number; // To store the file size in bytes

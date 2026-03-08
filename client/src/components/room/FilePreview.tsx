@@ -19,17 +19,24 @@ const formatBytes = (bytes: number, decimals = 2) => {
 
 const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadErrors }) => {
   useEffect(() => {
-    // This effect should only run once to register the cleanup function.
-    // The cleanup function will be called when the component unmounts.
+    // Cleanup function to revoke blob URLs
     const contentToRevoke = item.content;
+    const previewToRevoke = item.previewContent;
     return () => {
       if (contentToRevoke && contentToRevoke.startsWith('blob:')) {
         URL.revokeObjectURL(contentToRevoke);
+      }
+      if (previewToRevoke && previewToRevoke.startsWith('blob:')) {
+        URL.revokeObjectURL(previewToRevoke);
       }
     };
   }, []);
 
   const fileExtension = getFileExtension(item.name);
+  
+  // Prefer full content if available and complete, otherwise use previewContent
+  const isComplete = item.status === 'complete' || !item.status;
+  const displayContent = (isComplete && item.content) ? item.content : (item.previewContent || item.content);
 
   // Show loading indicator while thumbnail is being generated
   if (item.status === 'generating') {
@@ -60,7 +67,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
     case 'image':
       return (
         <img
-          src={item.content}
+          src={displayContent}
           alt={item.name || 'Pasted Image'}
           className="media-preview"
           onError={() => onMediaError(item.id)}
@@ -69,7 +76,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
     case 'video':
       return (
         <video
-          src={item.content}
+          src={displayContent}
           className="media-preview"
           controls
           onError={() => onMediaError(item.id)}
@@ -78,7 +85,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
     case 'audio':
         return (
           <div className="file-preview">
-            <audio src={item.content} controls className="media-preview" onError={() => onMediaError(item.id)} />
+            <audio src={displayContent} controls className="media-preview" onError={() => onMediaError(item.id)} />
             <div className="file-info">
               <span className="file-name">{truncateFilename(item.name)}</span>
               {item.size !== undefined && <span className="file-size">({formatBytes(item.size)})</span>}
@@ -89,8 +96,8 @@ const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadError
       if (fileExtension === 'pdf') {
         return (
             <div className="file-preview">
-                <object data={item.content} type="application/pdf" width="100%" height="500px">
-                    <p>PDF preview is not supported in your browser. You can <a href={item.content} download={item.name}>download it instead</a>.</p>
+                <object data={displayContent} type="application/pdf" width="100%" height="500px">
+                    <p>PDF preview is not supported in your browser. You can <a href={displayContent} download={item.name}>download it instead</a>.</p>
                 </object>
             </div>
         );
