@@ -61,6 +61,7 @@
 }
 
 .compose__attach,
+.compose__paste,
 .compose__send {
   display: inline-flex;
   align-items: center;
@@ -74,14 +75,20 @@
   transition: background 0.15s, color 0.15s, transform 0.1s, opacity 0.15s;
 }
 
-.compose__attach {
+.compose__attach,
+.compose__paste {
   background: transparent;
   color: var(--secondary-color);
 }
 
-.compose__attach:hover {
+.compose__attach:hover,
+.compose__paste:hover {
   background: var(--border-color);
   color: var(--text-color);
+}
+
+.compose__paste {
+  color: var(--primary-color);
 }
 
 .compose__send {

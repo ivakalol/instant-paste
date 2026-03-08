@@ -247,6 +247,56 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
+  const handlePasteButtonClick = async () => {
+    try {
+      if (!navigator.clipboard) {
+        showToast('Clipboard API not supported in this browser.', 'error');
+        return;
+      }
+
+      // Try to read generic clipboard items (images, etc) first
+      if (navigator.clipboard.read) {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          for (const item of clipboardItems) {
+            for (const type of item.types) {
+              if (type.startsWith('image/')) {
+                const blob = await item.getType(type);
+                const file = new File([blob], `pasted-image-${Date.now()}.${type.split('/')[1]}`, { type });
+                handleFileSelected(file);
+                return; // Process one item at a time
+              } else if (type === 'text/plain') {
+                const blob = await item.getType(type);
+                const text = await blob.text();
+                if (onPaste) onPaste('text', text);
+                return;
+              }
+            }
+          }
+        } catch (readErr) {
+          // Fallback to readText if read() fails (some browsers restrict read())
+          const text = await navigator.clipboard.readText();
+          if (text && onPaste) {
+            onPaste('text', text);
+          } else {
+            showToast('Failed to paste. Ensure you have given clipboard permission.', 'error');
+          }
+        }
+      } else {
+        // Fallback for browsers that only support readText
+        const text = await navigator.clipboard.readText();
+        if (text && onPaste) {
+          onPaste('text', text);
+        } else {
+          showToast('Failed to paste. Ensure you have given clipboard permission.', 'error');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to read clipboard:', err);
+      showToast('Failed to paste from clipboard. Check permissions.', 'error');
+    }
+  };
+
   return (
     <div className="clipboard-area">
       {/* ── Compose area ── */}
@@ -271,6 +321,15 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
             Attach
           </button>
           <input ref={fileInputRef} type="file" multiple onChange={handleFileChange} style={{ display: 'none' }} />
+
+          <button onClick={handlePasteButtonClick} className="compose__paste" title="Paste from clipboard">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+              <path d="M9 14h6"/><path d="M12 11v6"/>
+            </svg>
+            Paste
+          </button>
 
           <span className="compose__hint">Ctrl+Enter to send</span>
 
