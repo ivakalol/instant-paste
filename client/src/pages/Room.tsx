@@ -10,7 +10,7 @@ import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import { createImageThumbnail } from '../utils/image';
 import '../App.css';
-
+//this is a test comit
 const MAX_HISTORY = 20;
 const THUMBNAIL_MAX_WIDTH = 200;
 const THUMBNAIL_MAX_HEIGHT = 200;
@@ -407,3 +407,4 @@ const Room: React.FC = () => {
 };
 
 export default Room;
+
