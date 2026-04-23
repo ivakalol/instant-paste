@@ -269,7 +269,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         showToast('Cannot download file while it is transferring.', 'info');
         return;
     }
-    const filename = item.name || `paste-${item.id}.dat`;
+    const filename = item.name || `paste-${item.id}`;
     
     if ((item.type === 'text' || item.type === 'rich-text') && !item.name) {
       const mimeType = item.type === 'rich-text' ? 'text/html' : 'text/plain';
