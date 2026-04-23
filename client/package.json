@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "crypto-js": "^4.2.0",
+    "dompurify": "^3.4.1",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.1",
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "react-scripts": "^5.0.1",

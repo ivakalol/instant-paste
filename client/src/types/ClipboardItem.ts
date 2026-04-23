@@ -1,7 +1,7 @@
 export interface ClipboardItem {
   id: string;
   fileId?: string; // Unique ID for file transfers
-  type: 'text' | 'image' | 'video' | 'file' | 'audio' | 'application';
+  type: 'text' | 'rich-text' | 'image' | 'video' | 'file' | 'audio' | 'application';
   content: string;
   previewContent?: string; // Small compressed variant for initial preview
   timestamp: number;

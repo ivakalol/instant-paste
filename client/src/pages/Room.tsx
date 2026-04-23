@@ -12,6 +12,13 @@ import { createImageThumbnail } from '../utils/image';
 import '../App.css';
 //this is a test comit
 const MAX_HISTORY = 20;
+const ALLOWED_CONTENT_TYPES: ReadonlySet<ClipboardItem['type']> = new Set([
+  'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application',
+]);
+const toContentType = (value: string | undefined): ClipboardItem['type'] =>
+  value && (ALLOWED_CONTENT_TYPES as Set<string>).has(value)
+    ? (value as ClipboardItem['type'])
+    : 'text';
 const THUMBNAIL_MAX_WIDTH = 200;
 const THUMBNAIL_MAX_HEIGHT = 200;
 
@@ -144,17 +151,18 @@ const Room: React.FC = () => {
               return {
                 ...item,
                 previewContent: message.previewContent || '',
-                type: message.contentType as ClipboardItem['type'] || item.type,
+                type: toContentType(message.contentType) || item.type,
                 status: 'downloading', // Start showing progress bar
               };
             }
             return item;
           }));
         } else if (!message.fileId) {
-          // This is a regular text message
+          // This is a regular text or rich-text message
+          const contentType = toContentType(message.contentType);
           const newItem: ClipboardItem = {
             id: Date.now().toString(),
-            type: 'text',
+            type: contentType,
             content: message.content || '',
             timestamp: message.timestamp || Date.now(),
             encrypted: true,
@@ -163,7 +171,7 @@ const Room: React.FC = () => {
           };
           setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
 
-          if (autoCopyEnabled && message.content) {
+          if (autoCopyEnabled && message.content && contentType === 'text') {
             const now = Date.now();
             if (now - lastAutoCopyRef.current > 2000) {
               lastAutoCopyRef.current = now;
@@ -303,19 +311,21 @@ const Room: React.FC = () => {
     }
   }, [uploadFile, showToast]);
 
-  const handlePaste = useCallback(async (type: string, content: string) => {
-    // Check if text is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
+  const handlePaste = useCallback(async (type: ClipboardItem['type'], content: string) => {
+    // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
     const sizeInBytes = new Blob([content]).size;
     if (sizeInBytes > 1024 * 1024) {
-      showToast('Text too large. sending as file...', 'info');
-      const file = new File([content], `Large Text ${new Date().toLocaleTimeString()}.txt`, { type: 'text/plain' });
+      showToast('Content too large. sending as file...', 'info');
+      const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = type === 'rich-text' ? `Rich Text ${safeTimestamp}.html` : `Large Text ${safeTimestamp}.txt`;
+      const file = new File([content], filename, { type: type === 'rich-text' ? 'text/html' : 'text/plain' });
       handleFileSelect(file);
       return;
     }
 
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
-      type: 'text',
+      type,
       content,
       timestamp: Date.now(),
       encrypted: true,
@@ -327,7 +337,7 @@ const Room: React.FC = () => {
 
     const sent = await sendMessage({
       type: 'clipboard',
-      contentType: 'text',
+      contentType: type,
       content: content,
     });
 
