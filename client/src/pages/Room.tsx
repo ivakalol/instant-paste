@@ -309,7 +309,8 @@ const Room: React.FC = () => {
     const sizeInBytes = new Blob([content]).size;
     if (sizeInBytes > 1024 * 1024) {
       showToast('Content too large. sending as file...', 'info');
-      const filename = type === 'rich-text' ? `Rich Text ${new Date().toLocaleTimeString()}.html` : `Large Text ${new Date().toLocaleTimeString()}.txt`;
+      const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = type === 'rich-text' ? `Rich Text ${safeTimestamp}.html` : `Large Text ${safeTimestamp}.txt`;
       const file = new File([content], filename, { type: type === 'rich-text' ? 'text/html' : 'text/plain' });
       handleFileSelect(file);
       return;
