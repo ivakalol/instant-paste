@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import './ClipboardArea.css';
 import type { ClipboardItem as ClipboardHistoryItem } from '../../types/ClipboardItem';
 import { copyToClipboard, downloadFile } from '../../utils/clipboard';
@@ -101,23 +102,51 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   }, [onFileSelect, showToast]);
 
   const processClipboardItem = useCallback((item: DataTransferItem) => {
-    if (item.kind === 'string' && item.type.startsWith('text/') && onPaste) {
+    if (item.kind === 'string' && item.type === 'text/html' && onPaste) {
+      item.getAsString((text) => onPaste('rich-text', text));
+      return true;
+    } else if (item.kind === 'string' && item.type === 'text/plain' && onPaste) {
       item.getAsString((text) => onPaste('text', text));
+      return true;
     } else if (item.kind === 'file') {
       const file = item.getAsFile();
       if (file) {
         handleFileSelected(file);
+        return true;
       }
     }
+    return false;
   }, [onPaste, handleFileSelected]);
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      e.preventDefault();
       const items = e.clipboardData?.items;
       if (!items) return;
+
+      e.preventDefault();
+
+      // Prioritize files
       for (let i = 0; i < items.length; i++) {
-        processClipboardItem(items[i]);
+        if (items[i].kind === 'file') {
+          processClipboardItem(items[i]);
+          return;
+        }
+      }
+
+      // Then prioritize rich text (HTML)
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'string' && items[i].type === 'text/html') {
+          processClipboardItem(items[i]);
+          return;
+        }
+      }
+
+      // Finally fallback to plain text
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'string' && items[i].type === 'text/plain') {
+          processClipboardItem(items[i]);
+          return;
+        }
       }
     };
 
@@ -163,8 +192,31 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
     }
 
-    if (item.type === 'text') {
-      copyToClipboard(item.content)
+    if (item.type === 'text' || item.type === 'rich-text') {
+      if (item.type === 'rich-text' && navigator.clipboard && navigator.clipboard.write) {
+        try {
+          // Try to copy both HTML and a plain text version
+          const plainText = DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n');
+          const clipboardItem = new ClipboardItem({
+            'text/html': new Blob([item.content], { type: 'text/html' }),
+            'text/plain': new Blob([plainText], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([clipboardItem]);
+          showToast('Copied to clipboard!', 'success');
+          setCopiedItemId(item.id);
+          setTimeout(() => setCopiedItemId(null), 1000);
+          return;
+        } catch (err) {
+          console.error('Failed to copy rich text:', err);
+          // Fallback to plain text if rich text copy fails
+        }
+      }
+
+      const contentToCopy = item.type === 'rich-text' 
+        ? DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n')
+        : item.content;
+
+      copyToClipboard(contentToCopy)
         .then(() => {
           showToast('Copied to clipboard!', 'success');
           setCopiedItemId(item.id);
@@ -219,10 +271,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
     const filename = item.name || `paste-${item.id}.dat`;
     
-    if (item.type === 'text' && !item.name) {
-      const blob = new Blob([item.content], { type: 'text/plain' });
+    if ((item.type === 'text' || item.type === 'rich-text') && !item.name) {
+      const mimeType = item.type === 'rich-text' ? 'text/html' : 'text/plain';
+      const ext = item.type === 'rich-text' ? 'html' : 'txt';
+      const blob = new Blob([item.content], { type: mimeType });
       const url = URL.createObjectURL(blob);
-      downloadFile(url, filename);
+      downloadFile(url, `${filename}.${ext}`);
       URL.revokeObjectURL(url);
     } else {
       if (!item.content) {
@@ -260,7 +314,12 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           const clipboardItems = await navigator.clipboard.read();
           for (const item of clipboardItems) {
             for (const type of item.types) {
-              if (type.startsWith('image/')) {
+              if (type === 'text/html') {
+                const blob = await item.getType(type);
+                const text = await blob.text();
+                if (onPaste) onPaste('rich-text', text);
+                return;
+              } else if (type.startsWith('image/')) {
                 const blob = await item.getType(type);
                 const file = new File([blob], `pasted-image-${Date.now()}.${type.split('/')[1]}`, { type });
                 handleFileSelected(file);
@@ -380,6 +439,17 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                           </button>
                         )}
                       </div>
+                    ) : item.type === 'rich-text' ? (
+                      <div className={`clip-card__rich-text ${expandedItems.has(item.id) ? 'clip-card__rich-text--expanded' : ''}`}>
+                        <div 
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }} 
+                        />
+                        {item.content.length > 500 && (
+                          <button onClick={() => toggleExpand(item.id)} className="clip-card__expand">
+                            {expandedItems.has(item.id) ? 'Show less' : '…more'}
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <div
                         className={(item.type === 'image' || item.type === 'video') && (!item.status || item.status === 'complete' || item.previewContent) && (item.content || item.previewContent) ? 'clip-card__media-clickable' : undefined}
@@ -414,7 +484,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                   </div>
                   <div className="clip-card__footer">
                     <div className="clip-card__meta">
-                      <span className="clip-card__type">{item.type}</span>
+                      <span className="clip-card__type">{item.type === 'rich-text' ? 'rich text' : item.type}</span>
                       <span className="clip-card__time">{new Date(item.timestamp).toLocaleTimeString()}</span>
                     </div>
                     <div className="clip-card__actions">

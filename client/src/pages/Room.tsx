@@ -151,10 +151,11 @@ const Room: React.FC = () => {
             return item;
           }));
         } else if (!message.fileId) {
-          // This is a regular text message
+          // This is a regular text or rich-text message
+          const contentType = (message.contentType as ClipboardItem['type']) || 'text';
           const newItem: ClipboardItem = {
             id: Date.now().toString(),
-            type: 'text',
+            type: contentType,
             content: message.content || '',
             timestamp: message.timestamp || Date.now(),
             encrypted: true,
@@ -163,7 +164,7 @@ const Room: React.FC = () => {
           };
           setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
 
-          if (autoCopyEnabled && message.content) {
+          if (autoCopyEnabled && message.content && contentType === 'text') {
             const now = Date.now();
             if (now - lastAutoCopyRef.current > 2000) {
               lastAutoCopyRef.current = now;
@@ -304,18 +305,20 @@ const Room: React.FC = () => {
   }, [uploadFile, showToast]);
 
   const handlePaste = useCallback(async (type: string, content: string) => {
-    // Check if text is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
+    // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
     const sizeInBytes = new Blob([content]).size;
     if (sizeInBytes > 1024 * 1024) {
-      showToast('Text too large. sending as file...', 'info');
-      const file = new File([content], `Large Text ${new Date().toLocaleTimeString()}.txt`, { type: 'text/plain' });
+      showToast('Content too large. sending as file...', 'info');
+      const filename = type === 'rich-text' ? `Rich Text ${new Date().toLocaleTimeString()}.html` : `Large Text ${new Date().toLocaleTimeString()}.txt`;
+      const file = new File([content], filename, { type: type === 'rich-text' ? 'text/html' : 'text/plain' });
       handleFileSelect(file);
       return;
     }
 
+    const contentType = type as ClipboardItem['type'];
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
-      type: 'text',
+      type: contentType,
       content,
       timestamp: Date.now(),
       encrypted: true,
@@ -327,7 +330,7 @@ const Room: React.FC = () => {
 
     const sent = await sendMessage({
       type: 'clipboard',
-      contentType: 'text',
+      contentType: contentType,
       content: content,
     });
 
