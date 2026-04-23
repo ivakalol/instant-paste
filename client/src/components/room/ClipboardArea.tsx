@@ -196,7 +196,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       if (item.type === 'rich-text' && navigator.clipboard && navigator.clipboard.write) {
         try {
           // Try to copy both HTML and a plain text version
-          const plainText = DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n');
+          const plainText = DOMPurify.sanitize(item.content.replace(/<br\s*\/?>/gi, '\n'), { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ');
           const clipboardItem = new ClipboardItem({
             'text/html': new Blob([item.content], { type: 'text/html' }),
             'text/plain': new Blob([plainText], { type: 'text/plain' })
@@ -213,7 +213,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       }
 
       const contentToCopy = item.type === 'rich-text' 
-        ? DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n')
+        ? DOMPurify.sanitize(item.content.replace(/<br\s*\/?>/gi, '\n'), { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ')
         : item.content;
 
       copyToClipboard(contentToCopy)
