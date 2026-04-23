@@ -12,6 +12,13 @@ import { createImageThumbnail } from '../utils/image';
 import '../App.css';
 
 const MAX_HISTORY = 20;
+const ALLOWED_CONTENT_TYPES: ReadonlySet<ClipboardItem['type']> = new Set([
+  'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application',
+]);
+const toContentType = (value: string | undefined): ClipboardItem['type'] =>
+  value && (ALLOWED_CONTENT_TYPES as Set<string>).has(value)
+    ? (value as ClipboardItem['type'])
+    : 'text';
 const THUMBNAIL_MAX_WIDTH = 200;
 const THUMBNAIL_MAX_HEIGHT = 200;
 
@@ -144,7 +151,7 @@ const Room: React.FC = () => {
               return {
                 ...item,
                 previewContent: message.previewContent || '',
-                type: message.contentType as ClipboardItem['type'] || item.type,
+                type: toContentType(message.contentType) || item.type,
                 status: 'downloading', // Start showing progress bar
               };
             }
@@ -152,7 +159,7 @@ const Room: React.FC = () => {
           }));
         } else if (!message.fileId) {
           // This is a regular text or rich-text message
-          const contentType = (message.contentType as ClipboardItem['type']) || 'text';
+          const contentType = toContentType(message.contentType);
           const newItem: ClipboardItem = {
             id: Date.now().toString(),
             type: contentType,
