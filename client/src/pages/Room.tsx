@@ -304,7 +304,7 @@ const Room: React.FC = () => {
     }
   }, [uploadFile, showToast]);
 
-  const handlePaste = useCallback(async (type: string, content: string) => {
+  const handlePaste = useCallback(async (type: ClipboardItem['type'], content: string) => {
     // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
     const sizeInBytes = new Blob([content]).size;
     if (sizeInBytes > 1024 * 1024) {
@@ -316,10 +316,9 @@ const Room: React.FC = () => {
       return;
     }
 
-    const contentType = type as ClipboardItem['type'];
     const newItem: ClipboardItem = {
       id: Date.now().toString(),
-      type: contentType,
+      type,
       content,
       timestamp: Date.now(),
       encrypted: true,
@@ -331,7 +330,7 @@ const Room: React.FC = () => {
 
     const sent = await sendMessage({
       type: 'clipboard',
-      contentType: contentType,
+      contentType: type,
       content: content,
     });
 

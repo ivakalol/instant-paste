@@ -8,7 +8,7 @@ import FilePreview from './FilePreview';
 import MediaViewer from '../common/MediaViewer';
 
 interface ClipboardAreaProps {
-  onPaste?: (type: string, content: string, name?: string, size?: number) => void;
+  onPaste?: (type: ClipboardHistoryItem['type'], content: string, name?: string, size?: number) => void;
   onFileSelect: (file: File) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
