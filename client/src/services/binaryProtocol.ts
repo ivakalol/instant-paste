@@ -42,12 +42,26 @@ export const encodeBinaryFrame = (
 export const decodeBinaryFrame = (
   buf: ArrayBuffer,
 ): { fileId: string; chunkIndex: number; totalChunks: number; data: Uint8Array } => {
+  if (buf.byteLength < 10) {
+    throw new Error('Invalid binary frame: header is too short');
+  }
+
   const view = new DataView(buf);
   let o = 0;
   const idLen = view.getUint16(o); o += 2;
+
+  if (idLen === 0 || idLen > 1024 || o + idLen + 8 > buf.byteLength) {
+    throw new Error('Invalid binary frame: bad file ID length');
+  }
+
   const fileId = textDecoder.decode(new Uint8Array(buf, o, idLen)); o += idLen;
   const chunkIndex = view.getUint32(o); o += 4;
   const totalChunks = view.getUint32(o); o += 4;
+
+  if (totalChunks === 0 || chunkIndex >= totalChunks) {
+    throw new Error('Invalid binary frame: chunk index out of range');
+  }
+
   const data = new Uint8Array(buf, o, buf.byteLength - o);
   return { fileId, chunkIndex, totalChunks, data };
 };

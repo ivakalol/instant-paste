@@ -5,6 +5,8 @@ import { encryptChunk, generateDataKey, exportDataKey } from '../utils/e2ee';
 import { WebSocketMessage } from '../types';
 import { EncryptionContext, encryptForRecipients } from './wsEncryption';
 
+const BACKPRESSURE_POLL_MS = 16;
+
 export interface UploadDeps {
   ws: WebSocket;
   sendMessage: (msg: WebSocketMessage) => Promise<boolean>;
@@ -73,7 +75,6 @@ export const uploadFile = async (
   }
 
   // 3. Stream chunks as binary frames with backpressure
-  const reusableBuf = dataKey ? null : new Uint8Array(CHUNK_SIZE);
   let lastReportedProgress = 0;
 
   for (let i = 0; i < totalChunks; i++) {
@@ -83,7 +84,7 @@ export const uploadFile = async (
     }
 
     while (ws.bufferedAmount > BUFFER_HIGH_WATER) {
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, BACKPRESSURE_POLL_MS));
       if (ws.readyState !== WebSocket.OPEN) {
         onUpdate({ type: 'file-error', fileId, message: 'Connection lost during upload' });
         return;
@@ -92,20 +93,13 @@ export const uploadFile = async (
 
     const start = i * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, file.size);
-    const chunkLen = end - start;
     const sliceAB = await file.slice(start, end).arrayBuffer();
 
     let payload: Uint8Array;
     if (dataKey) {
       payload = await encryptChunk(new Uint8Array(sliceAB), dataKey);
     } else {
-      const view = new Uint8Array(sliceAB);
-      if (reusableBuf && chunkLen === CHUNK_SIZE) {
-        reusableBuf.set(view);
-        payload = reusableBuf;
-      } else {
-        payload = view;
-      }
+      payload = new Uint8Array(sliceAB);
     }
 
     const frame = encodeBinaryFrame(fileId, i, totalChunks, payload);

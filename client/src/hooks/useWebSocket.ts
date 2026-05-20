@@ -47,6 +47,7 @@ export const useWebSocket = (
   const onClipboardReceivedRef = useRef(onClipboardReceived);
   const onFileTransferUpdateRef = useRef(onFileTransferUpdate);
   const reconnectAttemptRef = useRef<number>(0);
+  const shouldReconnectRef = useRef(true);
 
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: null, connected: false, clientCount: 0, clientId: null,
@@ -138,13 +139,14 @@ export const useWebSocket = (
 
       switch (message.type) {
         case 'room-update':
+          const clients = Array.isArray(message.clients) ? message.clients : [];
           setRoomState({
             roomId: message.roomId || null,
             connected: true,
             clientCount: message.clientCount || 0,
             clientId: message.clientId || roomState.clientId,
           });
-          setRoomClients(message.clients.reduce((acc: any, c: any) => {
+          setRoomClients(clients.reduce((acc: any, c: any) => {
             acc[c.id] = c;
             return acc;
           }, {}));
@@ -239,6 +241,25 @@ export const useWebSocket = (
         case 'chunk-ack':
           break;
 
+        case 'file-cancel':
+          if (message.fileId) {
+            receiverState.current.activeTransfers.delete(message.fileId);
+            receiverState.current.memoryChunks.delete(message.fileId);
+            receiverState.current.orphanBinaryChunks.delete(message.fileId);
+            receiverState.current.pendingDataKeys.delete(message.fileId);
+            onFileTransferUpdateRef.current?.({
+              type: 'file-error',
+              fileId: message.fileId,
+              message: 'File transfer was cancelled',
+            });
+          }
+          break;
+
+        case 'room-closed':
+        case 'server-shutdown':
+          setRoomState(prev => ({ ...prev, connected: false, clientCount: 0 }));
+          break;
+
         case 'file-chunk':
           console.warn('Received legacy file-chunk JSON message');
           break;
@@ -272,13 +293,17 @@ export const useWebSocket = (
   // ── Connection lifecycle ───────────────────────────────────
 
   const connect = useCallback(() => {
+    if (!shouldReconnectRef.current) return;
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
 
-    ws.current = new WebSocket(wsUrl);
-    ws.current.binaryType = 'arraybuffer';
+    const socket = new WebSocket(wsUrl);
+    ws.current = socket;
+    socket.binaryType = 'arraybuffer';
 
-    ws.current.onopen = () => {
+    socket.onopen = () => {
+      if (ws.current !== socket) return;
       setRoomState(prev => ({ ...prev, connected: true }));
       reconnectAttemptRef.current = 0;
 
@@ -288,29 +313,42 @@ export const useWebSocket = (
           roomId: initialRoomId,
           ...(isE2eeEnabled && keyPair && { publicKey: keyPair.publicKey }),
         };
-        ws.current?.send(JSON.stringify(joinMsg));
+        socket.send(JSON.stringify(joinMsg));
       }
     };
 
-    ws.current.onmessage = (event) => onMessageRef.current(event);
+    socket.onmessage = (event) => onMessageRef.current(event);
 
-    ws.current.onclose = () => {
+    socket.onclose = () => {
+      if (ws.current !== socket || !shouldReconnectRef.current) return;
       setRoomState(prev => ({ ...prev, connected: false, clientCount: 0, clientId: null }));
       reconnectAttemptRef.current += 1;
       const delay = Math.min(3000 * Math.pow(2, reconnectAttemptRef.current - 1), 30000);
       reconnectTimeoutRef.current = setTimeout(() => {
-        if (ws.current?.readyState === WebSocket.CLOSED) connect();
+        if (shouldReconnectRef.current && ws.current === socket && socket.readyState === WebSocket.CLOSED) {
+          connect();
+        }
       }, delay);
     };
 
-    ws.current.onerror = (error) => console.error('WebSocket error:', error);
+    socket.onerror = (error) => console.error('WebSocket error:', error);
   }, [initialRoomId, keyPair, isE2eeEnabled]);
 
   useEffect(() => {
-    if (isReady) connect();
+    if (isReady) {
+      shouldReconnectRef.current = true;
+      connect();
+    }
     return () => {
+      shouldReconnectRef.current = false;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      ws.current?.close();
+      pendingRoomCreation.current?.(null);
+      pendingRoomJoin.current?.(false);
+      pendingRoomCreation.current = undefined;
+      pendingRoomJoin.current = undefined;
+      const socket = ws.current;
+      ws.current = null;
+      socket?.close();
     };
   }, [connect, isReady]);
 
@@ -377,6 +415,10 @@ export const useWebSocket = (
 
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        resolve(null);
+        return;
+      }
       pendingRoomCreation.current = resolve;
       const msg: WebSocketMessage = { type: 'create' };
       if (isE2eeEnabled && keyPair) msg.publicKey = keyPair.publicKey;
@@ -386,6 +428,10 @@ export const useWebSocket = (
 
   const joinRoom = useCallback((roomId: string): Promise<boolean> => {
     return new Promise((resolve) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        resolve(false);
+        return;
+      }
       pendingRoomJoin.current = resolve;
       const msg: WebSocketMessage = {
         type: 'join', roomId,

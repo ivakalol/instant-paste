@@ -15,6 +15,45 @@ const MAX_HISTORY = 20;
 const THUMBNAIL_MAX_WIDTH = 200;
 const THUMBNAIL_MAX_HEIGHT = 200;
 
+const createLocalId = () => (
+  window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
+
+const getClipboardItemType = (
+  contentType?: string,
+  fileType?: string,
+): ClipboardItem['type'] => {
+  const source = contentType || fileType || '';
+
+  if (source === 'text' || source === 'rich-text' || source === 'image'
+    || source === 'video' || source === 'audio' || source === 'application'
+    || source === 'file') {
+    return source;
+  }
+
+  switch (source.split('/')[0]) {
+    case 'image':
+      return 'image';
+    case 'video':
+      return 'video';
+    case 'audio':
+      return 'audio';
+    case 'application':
+      return 'application';
+    default:
+      return 'file';
+  }
+};
+
+const revokeClipboardItemUrls = (item: ClipboardItem) => {
+  if (item.content?.startsWith('blob:')) {
+    URL.revokeObjectURL(item.content);
+  }
+  if (item.previewContent?.startsWith('blob:')) {
+    URL.revokeObjectURL(item.previewContent);
+  }
+};
+
 interface ToastState {
   message: string;
   type: 'success' | 'error' | 'info';
@@ -28,6 +67,7 @@ const Room: React.FC = () => {
   const [autoCopyEnabled, setAutoCopyEnabled] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const lastAutoCopyRef = useRef<number>(0);
+  const historyRef = useRef<ClipboardItem[]>([]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -86,7 +126,29 @@ const Room: React.FC = () => {
     document.body.removeChild(textArea);
   }, [showToast]);
 
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
+
+  useEffect(() => {
+    return () => {
+      historyRef.current.forEach(revokeClipboardItemUrls);
+    };
+  }, []);
+
+  const prependHistoryItem = useCallback((newItem: ClipboardItem) => {
+    setHistory(prev => {
+      if (prev.some(item => item.id === newItem.id)) return prev;
+
+      const next = [newItem, ...prev];
+      next.slice(MAX_HISTORY).forEach(revokeClipboardItemUrls);
+      return next.slice(0, MAX_HISTORY);
+    });
+  }, []);
+
   const handleFileTransferUpdate = useCallback((update: WebSocketMessage) => {
+    if (!update.fileId) return;
+
     setHistory(prev => prev.map(item => {
       if (item.fileId === update.fileId) {
         const newItem = { ...item };
@@ -103,6 +165,7 @@ const Room: React.FC = () => {
           newItem.status = 'complete';
           newItem.progress = 100;
         } else if (update.type === 'file-error') {
+          revokeClipboardItemUrls(item);
           showToast(`File transfer failed: ${update.message}`, 'error');
           return null; // remove from history
         }
@@ -120,7 +183,7 @@ const Room: React.FC = () => {
           const newItem: ClipboardItem = {
             id: message.fileId,
             fileId: message.fileId,
-            type: message.fileType as ClipboardItem['type'] || 'file',
+            type: getClipboardItemType(message.contentType, message.fileType),
             content: '', // No content yet
             timestamp: message.timestamp || Date.now(),
             name: message.fileName,
@@ -129,32 +192,54 @@ const Room: React.FC = () => {
             status: 'generating', // New status for waiting for thumbnail
             progress: 0,
           };
-          setHistory(prev => {
-            if (prev.some(item => item.id === newItem.id)) return prev;
-            return [newItem, ...prev].slice(0, MAX_HISTORY);
-          });
+          prependHistoryItem(newItem);
         }
         break;
 
       case 'clipboard':
-        if (message.fileId && message.previewContent) {
-          // This is the arrival of the thumbnail, update the placeholder
-          setHistory(prev => prev.map(item => {
-            if (item.fileId === message.fileId) {
-              return {
-                ...item,
-                previewContent: message.previewContent || '',
-                type: message.contentType as ClipboardItem['type'] || item.type,
-                status: 'downloading', // Start showing progress bar
-              };
-            }
-            return item;
-          }));
+        if (message.fileId) {
+          const fileId = message.fileId;
+          setHistory(prev => {
+            let updatedExisting = false;
+            const next = prev.map(item => {
+              if (item.fileId === fileId) {
+                updatedExisting = true;
+                return {
+                  ...item,
+                  previewContent: message.previewContent ?? item.previewContent,
+                  type: getClipboardItemType(message.contentType, message.fileType),
+                  name: message.fileName ?? item.name,
+                  size: message.fileSize ?? item.size,
+                  status: item.status === 'complete' ? 'complete' as const : 'downloading' as const,
+                };
+              }
+              return item;
+            });
+
+            if (updatedExisting) return next;
+
+            const newItem: ClipboardItem = {
+              id: fileId,
+              fileId,
+              type: getClipboardItemType(message.contentType, message.fileType),
+              content: '',
+              previewContent: message.previewContent,
+              timestamp: message.timestamp || Date.now(),
+              name: message.fileName,
+              size: message.fileSize,
+              encrypted: true,
+              status: 'downloading',
+              progress: 0,
+            };
+            const withNewItem = [newItem, ...prev];
+            withNewItem.slice(MAX_HISTORY).forEach(revokeClipboardItemUrls);
+            return withNewItem.slice(0, MAX_HISTORY);
+          });
         } else if (!message.fileId) {
           // This is a regular text or rich-text message
           const contentType = (message.contentType as ClipboardItem['type']) || 'text';
           const newItem: ClipboardItem = {
-            id: Date.now().toString(),
+            id: createLocalId(),
             type: contentType,
             content: message.content || '',
             timestamp: message.timestamp || Date.now(),
@@ -162,7 +247,7 @@ const Room: React.FC = () => {
             status: 'complete',
             progress: 100,
           };
-          setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+          prependHistoryItem(newItem);
 
           if (autoCopyEnabled && message.content && contentType === 'text') {
             const now = Date.now();
@@ -183,7 +268,7 @@ const Room: React.FC = () => {
         }
         break;
     }
-  }, [autoCopyEnabled, showToast, copyTextToClipboard]);
+  }, [autoCopyEnabled, showToast, copyTextToClipboard, prependHistoryItem]);
 
   const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled, encryptFiles, setEncryptFiles } = useWebSocket(
     handleClipboardReceived,
@@ -197,8 +282,12 @@ const Room: React.FC = () => {
       try {
         const savedHistory = await loadHistory(roomId);
         if (savedHistory && Array.isArray(savedHistory)) {
-          // Filter out any incomplete transfers from previous sessions
-          setHistory(savedHistory.filter(item => item.status === 'complete' || !item.status));
+          // File blob URLs are session-local, so only text-like entries survive reloads.
+          setHistory(savedHistory.filter(item => (
+            (item.status === 'complete' || !item.status)
+            && !item.fileId
+            && !item.content?.startsWith('blob:')
+          )));
         }
       } catch (error) {
         console.error('Failed to load history from IndexedDB:', error);
@@ -214,7 +303,11 @@ const Room: React.FC = () => {
     const intervalId = setInterval(() => {
       const now = Date.now();
       const thirtyMinutes = 30 * 60 * 1000;
-      setHistory(prev => prev.filter(item => now - item.timestamp < thirtyMinutes));
+      setHistory(prev => prev.filter(item => {
+        const keep = now - item.timestamp < thirtyMinutes;
+        if (!keep) revokeClipboardItemUrls(item);
+        return keep;
+      }));
     }, 60 * 1000); // Run every minute
 
     return () => clearInterval(intervalId);
@@ -222,11 +315,15 @@ const Room: React.FC = () => {
 
   useEffect(() => {
     if (!roomId || !isHistoryLoaded) return;
-  
+
     const timeoutId = setTimeout(async () => {
       try {
         // Only save completed items to persistent storage
-        const historyToSave = history.filter(item => item.status === 'complete' || !item.status);
+        const historyToSave = history.filter(item => (
+          (item.status === 'complete' || !item.status)
+          && !item.fileId
+          && !item.content.startsWith('blob:')
+        ));
         await saveHistory(roomId, historyToSave);
       } catch (error) {
         console.error('Failed to save history to IndexedDB:', error);
@@ -237,32 +334,14 @@ const Room: React.FC = () => {
         }
       }
     }, 1000);
-  
+
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast, isHistoryLoaded]);
 
   const handleFileSelect = useCallback(async (file: File) => {
-    const fileId = `${Date.now()}-${file.name}`;
-    let fileType: ClipboardItem['type'] = 'file';
-    const majorType = file.type.split('/')[0];
+    const fileId = createLocalId();
+    const fileType = getClipboardItemType(undefined, file.type);
 
-    switch (majorType) {
-      case 'image':
-        fileType = 'image';
-        break;
-      case 'video':
-        fileType = 'video';
-        break;
-      case 'audio':
-        fileType = 'audio';
-        break;
-      case 'application':
-        fileType = 'application';
-        break;
-      default:
-        fileType = 'file';
-    }
-    
     // Create a placeholder for the sender's UI immediately
     const initialItem: ClipboardItem = {
       id: fileId,
@@ -276,7 +355,7 @@ const Room: React.FC = () => {
       status: fileType === 'image' ? 'generating' : 'uploading',
       progress: 0,
     };
-    setHistory(prev => [initialItem, ...prev].slice(0, MAX_HISTORY));
+    prependHistoryItem(initialItem);
 
     // Generate thumbnail for images
     let previewContent: string | undefined = undefined;
@@ -287,11 +366,11 @@ const Room: React.FC = () => {
         console.warn('Could not create thumbnail for image:', error);
       }
     }
-    
+
     // Update the local UI with the thumbnail and the full file blob URL
     const fullFileBlobUrl = URL.createObjectURL(file);
-    setHistory(prev => prev.map(item => 
-      item.id === fileId 
+    setHistory(prev => prev.map(item =>
+      item.id === fileId
         ? { ...item, previewContent, content: fullFileBlobUrl, status: 'uploading' as const }
         : item
     ));
@@ -302,7 +381,7 @@ const Room: React.FC = () => {
     } else {
        showToast('File upload is not available.', 'error');
     }
-  }, [uploadFile, showToast]);
+  }, [uploadFile, showToast, prependHistoryItem]);
 
   const handlePaste = useCallback(async (type: string, content: string) => {
     // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
@@ -317,7 +396,7 @@ const Room: React.FC = () => {
 
     const contentType = type as ClipboardItem['type'];
     const newItem: ClipboardItem = {
-      id: Date.now().toString(),
+      id: createLocalId(),
       type: contentType,
       content,
       timestamp: Date.now(),
@@ -326,7 +405,7 @@ const Room: React.FC = () => {
       progress: 100,
     };
 
-    setHistory(prev => [newItem, ...prev].slice(0, MAX_HISTORY));
+    prependHistoryItem(newItem);
 
     const sent = await sendMessage({
       type: 'clipboard',
@@ -337,7 +416,7 @@ const Room: React.FC = () => {
     if (!sent) {
       showToast('Failed to send content. Check connection or E2EE key sync.', 'error');
     }
-  }, [sendMessage, showToast, handleFileSelect]);
+  }, [sendMessage, showToast, handleFileSelect, prependHistoryItem]);
 
   const handleLeaveRoom = () => {
     if (roomId) {
@@ -349,8 +428,8 @@ const Room: React.FC = () => {
 
   const handleDeleteItem = useCallback((id: string) => {
     setHistory(prev => prev.filter(item => {
-        if (item.id === id && item.content && item.content.startsWith('blob:')) {
-            URL.revokeObjectURL(item.content);
+        if (item.id === id) {
+            revokeClipboardItemUrls(item);
         }
         return item.id !== id;
     }));
@@ -360,9 +439,7 @@ const Room: React.FC = () => {
   const handleClearAll = useCallback(async () => {
     setHistory(prev => {
         prev.forEach(item => {
-            if (item.content && item.content.startsWith('blob:')) {
-                URL.revokeObjectURL(item.content);
-            }
+            revokeClipboardItemUrls(item);
         });
         return [];
     });
@@ -379,7 +456,7 @@ const Room: React.FC = () => {
 
   return (
     <>
-      <RoomInfo 
+      <RoomInfo
         roomState={roomState}
         onLeave={handleLeaveRoom}
         encryptionEnabled={isE2eeEnabled}
@@ -390,7 +467,7 @@ const Room: React.FC = () => {
         showToast={showToast}
         onClearAll={handleClearAll}
       />
-      <ClipboardArea 
+      <ClipboardArea
         onPaste={handlePaste}
         onFileSelect={handleFileSelect}
         history={history}

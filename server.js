@@ -30,18 +30,20 @@ const CONFIG = {
   MAX_ROOM_INACTIVITY: 60 * 60 * 1000, // 1 hour
   INACTIVE_ROOM_CHECK_INTERVAL: 60 * 1000, // 1 minute
   ROOM_STATUS_INTERVAL: 5 * 60 * 1000, // 5 minutes
-  
+
   // Rate limiting
   MESSAGE_RATE_LIMIT: 100, // messages per second
   RATE_LIMIT_WINDOW: 1000, // 1 second
-  
+
   // File transfer limits
   MAX_FILE_SIZE: 1024 * 1024 * 1024, // 1GB
   MAX_FILENAME_LENGTH: 255,
-  
+
   // WebSocket settings
   WS_MAX_PAYLOAD:  2 * 1024 * 1024, // 2MB
+  WS_SEND_BUFFER_HIGH_WATER: Number(process.env.WS_SEND_BUFFER_HIGH_WATER || 32 * 1024 * 1024), // 32MB
   HEARTBEAT_INTERVAL:  30000, // 30 seconds
+  HTTP_JSON_LIMIT: process.env.HTTP_JSON_LIMIT || '16kb',
 };
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
@@ -184,7 +186,7 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'OPTIONS'],
 }));
-app.use(express.json({ limit: '1gb' }));
+app.use(express.json({ limit: CONFIG.HTTP_JSON_LIMIT }));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 server.on('upgrade', (request, socket, head) => {
@@ -214,9 +216,28 @@ function sendError(ws, code, message) {
 }
 
 function sendMessage(ws, data) {
-  if (ws.readyState === WebSocket. OPEN) {
-    ws.send(JSON.stringify(data));
+  sendJsonToClient(ws, data, ws.roomId || 'direct');
+}
+
+function closeSlowClient(ws, roomId) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  log(LOG_LEVELS.WARN, `[ROOM ${roomId}] Closing slow client ${ws.id}; buffered ${ws.bufferedAmount} bytes`);
+  metrics.errors++;
+  ws.close(1013, 'Client is too slow to receive data');
+}
+
+function sendJsonToClient(ws, data, roomId) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.bufferedAmount > CONFIG.WS_SEND_BUFFER_HIGH_WATER) {
+    closeSlowClient(ws, roomId);
+    return;
   }
+  ws.send(JSON.stringify(data), (error) => {
+    if (error) {
+      log(LOG_LEVELS.ERROR, `[WS] Failed to send JSON to ${ws.id}:`, error);
+      metrics.errors++;
+    }
+  });
 }
 
 function generateRoomId() {
@@ -295,7 +316,16 @@ function broadcastToRoom(roomId, data, excludeWs = null) {
 
   room.clients.forEach(({ ws: client }) => {
     if (client !== excludeWs && client.readyState === WebSocket. OPEN) {
-      client.send(message);
+      if (client.bufferedAmount > CONFIG.WS_SEND_BUFFER_HIGH_WATER) {
+        closeSlowClient(client, roomId);
+        return;
+      }
+      client.send(message, (error) => {
+        if (error) {
+          log(LOG_LEVELS.ERROR, `[WS] Failed to broadcast to ${client.id}:`, error);
+          metrics.errors++;
+        }
+      });
     }
   });
 
@@ -340,6 +370,27 @@ function validateFileChunk(data) {
     return { valid:  false, code: ERROR_CODES. INVALID_MESSAGE, message: 'Chunk index out of range' };
   }
   return { valid: true };
+}
+
+function decodeBinaryFrameHeader(data) {
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  if (buffer.length < 10) return null;
+
+  const idLen = buffer.readUInt16BE(0);
+  if (idLen === 0 || idLen > 1024 || 2 + idLen + 8 > buffer.length) {
+    return null;
+  }
+
+  const offset = 2 + idLen;
+  const fileId = buffer.toString('utf8', 2, offset);
+  const chunkIndex = buffer.readUInt32BE(offset);
+  const totalChunks = buffer.readUInt32BE(offset + 4);
+
+  if (totalChunks === 0 || chunkIndex >= totalChunks) {
+    return null;
+  }
+
+  return { fileId, chunkIndex, totalChunks };
 }
 
 // =============================================================================
@@ -422,8 +473,6 @@ function handleCreate(ws, publicKey) {
     clientCount: room.clients.size
   });
 
-  sendMessage(ws, { type: 'reload' });
-
   metrics.roomsCreated++;
   log(LOG_LEVELS. INFO, `[ROOM ${roomId}] Created by client ${ws.id}`);
   logRoomStatus();
@@ -488,7 +537,7 @@ function handleClipboard(ws, data) {
     timestamp: Date.now()
   };
 
-  // If it's a file transfer, track it. 
+  // If it's a file transfer, track it.
   if (data.fileId) {
     if (!room.activeTransfers.has(ws.id)) {
       room.activeTransfers.set(ws.id, new Set());
@@ -582,12 +631,40 @@ function handleBinaryRelay(ws, data) {
   if (!room) return;
   room.lastActivity = Date.now();
 
+  const header = decodeBinaryFrameHeader(data);
+  if (!header) {
+    sendError(ws, ERROR_CODES.INVALID_MESSAGE, 'Invalid binary file chunk');
+    return;
+  }
+
   // Relay binary frame as-is to every other client in the room
   room.clients.forEach(({ ws: client }) => {
     if (client !== ws && client.readyState === WebSocket.OPEN) {
-      client.send(data, { binary: true });
+      if (client.bufferedAmount > CONFIG.WS_SEND_BUFFER_HIGH_WATER) {
+        closeSlowClient(client, ws.roomId);
+        return;
+      }
+      client.send(data, { binary: true }, (error) => {
+        if (error) {
+          log(LOG_LEVELS.ERROR, `[WS] Failed to relay binary frame to ${client.id}:`, error);
+          metrics.errors++;
+        }
+      });
     }
   });
+
+  if (header.chunkIndex === header.totalChunks - 1) {
+    const active = room.activeTransfers.get(ws.id);
+    if (active) {
+      active.delete(header.fileId);
+      if (active.size === 0) {
+        room.activeTransfers.delete(ws.id);
+      }
+    }
+    metrics.filesTransferred++;
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Finished binary file transfer ${header.fileId} from ${ws.id}`);
+  }
+
   metrics.messagesRelayed++;
 }
 
@@ -653,10 +730,10 @@ wss.on('connection', (ws, request) => {
       }
 
       switch (data.type) {
-        case 'join': 
+        case 'join':
           handleJoin(ws, data.roomId, data.publicKey);
           break;
-        case 'create': 
+        case 'create':
           handleCreate(ws, data.publicKey);
           break;
         case 'leave':
@@ -708,7 +785,6 @@ const heartbeatInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws. isAlive === false) {
       log(LOG_LEVELS.WARN, `[WS] Terminating unresponsive client ${ws.id}`);
-      metrics.activeConnections--;
       cleanupClient(ws.id);
       handleLeave(ws);
       ws.terminate();
@@ -839,12 +915,12 @@ server.listen(CONFIG. PORT, () => {
 
 process.on('SIGTERM', () => {
   log(LOG_LEVELS.INFO, 'SIGTERM received, closing server.. .');
-  
+
   // Notify all clients
   wss.clients.forEach((ws) => {
     sendMessage(ws, { type: 'server-shutdown' });
   });
-  
+
   server.close(() => {
     log(LOG_LEVELS.INFO, 'Server closed');
     process.exit(0);
@@ -853,11 +929,11 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   log(LOG_LEVELS. INFO, 'SIGINT received, closing server...');
-  
+
   wss.clients.forEach((ws) => {
     sendMessage(ws, { type:  'server-shutdown' });
   });
-  
+
   server.close(() => {
     log(LOG_LEVELS.INFO, 'Server closed');
     process.exit(0);

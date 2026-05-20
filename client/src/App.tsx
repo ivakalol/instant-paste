@@ -7,24 +7,25 @@ import { ThemeProvider } from './context/ThemeContext';
 import ThemeToggle from './components/common/ThemeToggle';
 import './App.css';
 
-const AppContent: React.FC = () => {
+const RoomSelectorRoute: React.FC = () => {
   const { createRoom, joinRoom, isReady } = useWebSocket();
 
+  return (
+    <RoomSelector
+      onCreateRoom={createRoom}
+      onJoinRoom={joinRoom}
+      isReady={isReady}
+    />
+  );
+};
+
+const AppContent: React.FC = () => {
   return (
     <div className="app">
       <ThemeToggle />
       <div className="container">
         <Routes>
-          <Route 
-            path="/" 
-            element={
-              <RoomSelector 
-                onCreateRoom={createRoom} 
-                onJoinRoom={joinRoom} 
-                isReady={isReady} 
-              />
-            } 
-          />
+          <Route path="/" element={<RoomSelectorRoute />} />
           <Route path="/:roomId" element={<Room />} />
         </Routes>
       </div>

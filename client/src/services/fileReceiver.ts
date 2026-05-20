@@ -4,6 +4,8 @@ import { decodeBinaryFrame, toBlobArrayBuffer } from './binaryProtocol';
 import { decryptChunk } from '../utils/e2ee';
 import { WebSocketMessage } from '../types';
 
+const MAX_ORPHAN_BINARY_CHUNKS_PER_FILE = 32;
+
 export interface ActiveFileTransfer {
   dataKey?: CryptoKey;
   totalChunks: number;
@@ -41,14 +43,34 @@ export const handleBinaryChunk = async (
   onComplete: (update: WebSocketMessage) => void,
   onError: (update: WebSocketMessage) => void,
 ): Promise<void> => {
-  const { fileId, chunkIndex, totalChunks, data: chunkData } = decodeBinaryFrame(frameData);
+  let decoded;
+  try {
+    decoded = decodeBinaryFrame(frameData);
+  } catch (e) {
+    console.error('Invalid binary file frame:', e);
+    onError({ type: 'file-error', message: 'Invalid file chunk received' });
+    return;
+  }
+
+  const { fileId, chunkIndex, totalChunks, data: chunkData } = decoded;
 
   const transfer = state.activeTransfers.get(fileId);
   if (!transfer || transfer.totalChunks === 0) {
     if (!state.orphanBinaryChunks.has(fileId)) {
       state.orphanBinaryChunks.set(fileId, []);
     }
-    state.orphanBinaryChunks.get(fileId)!.push(frameData);
+    const orphanChunks = state.orphanBinaryChunks.get(fileId)!;
+    if (orphanChunks.length >= MAX_ORPHAN_BINARY_CHUNKS_PER_FILE) {
+      onError({ type: 'file-error', fileId, message: 'Received file chunks before metadata' });
+      state.orphanBinaryChunks.delete(fileId);
+      return;
+    }
+    orphanChunks.push(frameData);
+    return;
+  }
+
+  if (transfer.totalChunks !== totalChunks) {
+    onError({ type: 'file-error', fileId, message: 'File chunk metadata mismatch' });
     return;
   }
 

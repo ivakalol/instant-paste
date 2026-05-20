@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import type { ClipboardItem } from '../../types/ClipboardItem';
 import { getFileExtension, truncateFilename } from '../../utils/clipboard';
 
@@ -18,22 +18,8 @@ const formatBytes = (bytes: number, decimals = 2) => {
   };
 
 const FilePreview: React.FC<FilePreviewProps> = ({ item, onMediaError, loadErrors }) => {
-  useEffect(() => {
-    // Cleanup function to revoke blob URLs
-    const contentToRevoke = item.content;
-    const previewToRevoke = item.previewContent;
-    return () => {
-      if (contentToRevoke && contentToRevoke.startsWith('blob:')) {
-        URL.revokeObjectURL(contentToRevoke);
-      }
-      if (previewToRevoke && previewToRevoke.startsWith('blob:')) {
-        URL.revokeObjectURL(previewToRevoke);
-      }
-    };
-  }, []);
-
   const fileExtension = getFileExtension(item.name);
-  
+
   // Prefer full content if available and complete, otherwise use previewContent
   const isComplete = item.status === 'complete' || !item.status;
   const displayContent = (isComplete && item.content) ? item.content : (item.previewContent || item.content);
