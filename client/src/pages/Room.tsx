@@ -345,7 +345,7 @@ const Room: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast, isHistoryLoaded]);
 
-  const handleFileSelect = useCallback(async (file: File) => {
+  const handleFileSelect = useCallback(async (file: File, uploadToken?: string) => {
     const fileId = createLocalId();
     const fileType = getClipboardItemType(undefined, file.type);
 
@@ -384,7 +384,7 @@ const Room: React.FC = () => {
 
     // The hook now handles the entire upload sequence
     if (uploadFile) {
-        await uploadFile(file, fileId, previewContent);
+        await uploadFile(file, fileId, previewContent, uploadToken);
     } else {
        showToast('File upload is not available.', 'error');
     }

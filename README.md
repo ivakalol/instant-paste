@@ -6,7 +6,7 @@ We've all been there: you find a great link, image, or snippet of text on your p
 
 **Instant Paste** solves this. It's a real-time clipboard synchronization tool that lets you instantly share text, images, and even videos between any of your devices just by opening a web page. No accounts, no installs, just a room code and you're connected. It supports end-to-end encryption so your data stays yours.
 
-I currently host my own instance on an old Android phone running Linux, proving that you don't need expensive servers to run powerful tools.
+I currently host my own instance on low-power hardware, proving that you don't need expensive servers to run useful realtime tools.
 
 ## How It Works ⚙️
 
@@ -14,7 +14,7 @@ The magic happens through **WebSockets**, which allow for a persistent, two-way 
 
 1.  **Room Creation:** When you open the site, you join a specific "room".
 2.  **Real-Time Sync:** As soon as you paste something on one device, the content is sent to the server and instantly broadcast to every other device in that same room.
-3.  **Security:** For those needing extra privacy, you can enable End-to-End Encryption. This uses the **Web Crypto API** right in your browser to encrypt your clipboard data with a password *before* it leaves your device. The server only sees encrypted gibberish; only your devices with the password can read the actual content.
+3.  **Security:** Text and user-facing file metadata use browser-native **Web Crypto API** end-to-end encryption whenever the page is loaded in a secure context. The server still sees room activity and declared file sizes for transfer policy enforcement. File bytes are optimized for speed by default, with an optional file-encryption toggle when you need the server to relay encrypted file bytes only.
 
 It's built with a **React** frontend for a snappy user experience and a **Node.js** backend to handle the high-speed traffic.
 
@@ -44,12 +44,13 @@ Here is a quick overview of how the project is organized:
 **"It says 'Disconnected' or 'Connection Lost'."**
 *   On mobile, browsers often "sleep" tabs that are in the background to save battery. If you've been away for a while, just refresh the page to reconnect.
 
-**"I enabled encryption and now I see gibberish."** (for when I introduce custom passwords)
-*   This happens when the passwords don't match. Make sure every device in the room is using the **exact same encryption password**. 
-
 **"My file/image isn't sending."**
-*   **Size Limit:** There is currently a ~50MB limit on files.
-*   **Slow Uploads:** If you are on a slow mobile connection, large images might take a few seconds to "pop up" on the other side.
+*   **Size Limit:** The default maximum is 1GB. Files larger than 150MB require the large-file upload password, and the server enforces that limit even if a custom client bypasses the browser prompt.
+*   **Slow Uploads:** The app sends files as binary WebSocket frames and uses 2MB chunks to reduce overhead on small servers such as a Raspberry Pi. Enabling file encryption is safer for untrusted servers but costs extra CPU on every sender and receiver.
+
+## Raspberry Pi Deployment Notes
+
+For best results on a Raspberry Pi, build the React client once with `npm run build` and run `NODE_ENV=production node server.js` behind HTTPS, Cloudflare Tunnel, or another trusted reverse proxy. Set `ALLOWED_ORIGINS`, `HEALTH_PASSWORD`, and `LARGE_FILE_PASSWORD` in `.env` before exposing it outside your LAN.
 
 ## Contributing 🤝
 

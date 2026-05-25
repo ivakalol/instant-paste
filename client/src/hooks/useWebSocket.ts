@@ -20,7 +20,7 @@ import { uploadFile as _uploadFile } from '../services/fileUploader';
 interface UseWebSocketReturn {
   roomState: RoomState;
   sendMessage: (message: WebSocketMessage) => Promise<boolean>;
-  uploadFile?: (file: File, fileId: string, previewContent?: string) => void;
+  uploadFile?: (file: File, fileId: string, previewContent?: string, uploadToken?: string) => void;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -399,10 +399,10 @@ export const useWebSocket = (
 
   // ── Upload file (delegates to service) ─────────────────────
 
-  const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
+  const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string, uploadToken?: string) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
 
-    await _uploadFile(file, fileId, previewContent, {
+    await _uploadFile(file, fileId, previewContent, uploadToken, {
       ws: ws.current,
       sendMessage,
       encryptionCtx: { isE2eeEnabled, keyPair, roomClients, clientId: roomState.clientId },

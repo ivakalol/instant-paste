@@ -7,6 +7,13 @@ const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
 
+const ONE_MIB = 1024 * 1024;
+
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
@@ -32,24 +39,38 @@ const CONFIG = {
   ROOM_STATUS_INTERVAL: 5 * 60 * 1000, // 5 minutes
 
   // Rate limiting
-  MESSAGE_RATE_LIMIT: 100, // messages per second
-  RATE_LIMIT_WINDOW: 1000, // 1 second
+  MESSAGE_RATE_LIMIT: parsePositiveInt(process.env.MESSAGE_RATE_LIMIT, 100), // messages per window
+  RATE_LIMIT_WINDOW: parsePositiveInt(process.env.RATE_LIMIT_WINDOW_MS, 1000), // 1 second
 
   // File transfer limits
-  MAX_FILE_SIZE: 1024 * 1024 * 1024, // 1GB
-  MAX_FILENAME_LENGTH: 255,
+  MAX_FILE_SIZE: parsePositiveInt(process.env.MAX_FILE_SIZE_BYTES, 1024 * ONE_MIB), // 1GB
+  LARGE_FILE_PASSWORD_THRESHOLD: parsePositiveInt(process.env.LARGE_FILE_PASSWORD_THRESHOLD_BYTES, 150 * ONE_MIB),
+  FILE_SIZE_ENFORCEMENT_GRACE_BYTES: parsePositiveInt(process.env.FILE_SIZE_ENFORCEMENT_GRACE_BYTES, ONE_MIB),
+  MAX_FILENAME_LENGTH: parsePositiveInt(process.env.MAX_FILENAME_LENGTH, 255),
+  MAX_FILE_ID_LENGTH: parsePositiveInt(process.env.MAX_FILE_ID_LENGTH, 128),
+  MAX_TOTAL_CHUNKS: parsePositiveInt(process.env.MAX_TOTAL_CHUNKS, 4096),
+  UPLOAD_TOKEN_TTL_MS: parsePositiveInt(process.env.UPLOAD_TOKEN_TTL_MS, 30 * 60 * 1000),
 
   // WebSocket settings
-  WS_MAX_PAYLOAD:  2 * 1024 * 1024, // 2MB
-  WS_SEND_BUFFER_HIGH_WATER: Number(process.env.WS_SEND_BUFFER_HIGH_WATER || 32 * 1024 * 1024), // 32MB
+  WS_MAX_PAYLOAD: parsePositiveInt(process.env.WS_MAX_PAYLOAD_BYTES, 3 * ONE_MIB), // Supports 2MB chunks plus encrypted overhead
+  WS_SEND_BUFFER_HIGH_WATER: parsePositiveInt(process.env.WS_SEND_BUFFER_HIGH_WATER, 16 * ONE_MIB),
   HEARTBEAT_INTERVAL:  30000, // 30 seconds
   HTTP_JSON_LIMIT: process.env.HTTP_JSON_LIMIT || '16kb',
 };
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const isPlaceholderSecret = (secret) => typeof secret === 'string' && /^CHANGE_ME/i.test(secret);
 
 if (IS_PRODUCTION && !CONFIG.HEALTH_PASSWORD) {
   throw new Error('HEALTH_PASSWORD is required in production.');
+}
+
+if (IS_PRODUCTION && isPlaceholderSecret(CONFIG.HEALTH_PASSWORD)) {
+  throw new Error('HEALTH_PASSWORD must be changed before production startup.');
+}
+
+if (IS_PRODUCTION && isPlaceholderSecret(CONFIG.LARGE_FILE_PASSWORD)) {
+  throw new Error('LARGE_FILE_PASSWORD must be changed before production startup.');
 }
 
 if (IS_PRODUCTION && CONFIG.ALLOWED_ORIGINS.length === 0) {
@@ -117,6 +138,8 @@ const ERROR_CODES = {
   RATE_LIMITED: 'RATE_LIMITED',
   INVALID_FILE_ID: 'INVALID_FILE_ID',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  LARGE_FILE_AUTH_REQUIRED: 'LARGE_FILE_AUTH_REQUIRED',
+  FILE_TRANSFER_REQUIRED: 'FILE_TRANSFER_REQUIRED',
   INVALID_FILENAME:  'INVALID_FILENAME',
   INVALID_MESSAGE: 'INVALID_MESSAGE',
 };
@@ -127,7 +150,12 @@ const ERROR_CODES = {
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ noServer: true, maxPayload: CONFIG. WS_MAX_PAYLOAD });
+const wss = new WebSocket.Server({
+  noServer: true,
+  maxPayload: CONFIG.WS_MAX_PAYLOAD,
+  perMessageDeflate: false,
+});
+const clientBuildPath = path.join(__dirname, 'client/build');
 
 const rooms = new Map();
 const messageCounters = new Map();
@@ -167,6 +195,18 @@ const isOriginAllowed = (origin) => {
   return CONFIG.ALLOWED_ORIGINS.some((allowedOrigin) => normalizeOrigin(allowedOrigin) === normalizedOrigin);
 };
 
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'clipboard-read=(self), clipboard-write=(self)');
+  if (IS_PRODUCTION && req.secure) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 app.use(cors({
   origin: (origin, callback) => {
     // Requests without Origin are typically non-browser/server-to-server/health checks.
@@ -187,7 +227,17 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
 }));
 app.use(express.json({ limit: CONFIG.HTTP_JSON_LIMIT }));
-app.use(express.static(path.join(__dirname, 'client/build')));
+app.use(express.static(clientBuildPath, {
+  etag: true,
+  maxAge: 0,
+  setHeaders: (res, filePath) => {
+    if (IS_PRODUCTION && filePath.includes(`${path.sep}static${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 server.on('upgrade', (request, socket, head) => {
   const origin = request.headers.origin;
@@ -308,6 +358,204 @@ function getVerifyPasswordAttemptState(ip) {
   return existing;
 }
 
+function cleanupVerifyPasswordAttempts() {
+  const now = Date.now();
+  verifyPasswordAttempts.forEach((state, ip) => {
+    if (now > state.resetTime && now > state.lockUntil) {
+      verifyPasswordAttempts.delete(ip);
+    }
+  });
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function base64UrlDecode(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), '=');
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function timingSafeEqualString(input, expected) {
+  if (typeof input !== 'string' || typeof expected !== 'string') {
+    return false;
+  }
+
+  const inputBuffer = Buffer.from(input);
+  const expectedBuffer = Buffer.from(expected);
+  if (inputBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(inputBuffer, expectedBuffer);
+}
+
+function signUploadToken(payload) {
+  return base64UrlEncode(
+    crypto
+      .createHmac('sha256', CONFIG.LARGE_FILE_PASSWORD)
+      .update(payload)
+      .digest()
+  );
+}
+
+function createUploadToken() {
+  if (!CONFIG.LARGE_FILE_PASSWORD) return null;
+
+  const payload = base64UrlEncode(JSON.stringify({
+    exp: Date.now() + CONFIG.UPLOAD_TOKEN_TTL_MS,
+    nonce: base64UrlEncode(crypto.randomBytes(16)),
+  }));
+
+  return `${payload}.${signUploadToken(payload)}`;
+}
+
+function isUploadTokenValid(token) {
+  if (!CONFIG.LARGE_FILE_PASSWORD || typeof token !== 'string' || token.length > 512) {
+    return false;
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [payload, signature] = parts;
+  const expectedSignature = signUploadToken(payload);
+  if (!timingSafeEqualString(signature, expectedSignature)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(payload));
+    return Number.isSafeInteger(parsed.exp) && parsed.exp >= Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function createRoomState() {
+  return {
+    clients: new Map(),
+    lastActivity: Date.now(),
+    activeTransfers: new Map(),
+    transferState: new Map(),
+  };
+}
+
+function getTransferKey(ws, fileId) {
+  return `${ws.id}:${fileId}`;
+}
+
+function isValidFileId(fileId) {
+  return (
+    typeof fileId === 'string'
+    && fileId.length > 0
+    && fileId.length <= CONFIG.MAX_FILE_ID_LENGTH
+    && /^[A-Za-z0-9._:-]+$/.test(fileId)
+  );
+}
+
+function parseDeclaredFileSize(data) {
+  const size = data.declaredFileSize ?? data.fileSize;
+  if (size === undefined || size === null) {
+    return { valid: true, size: null };
+  }
+
+  if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
+    return { valid: false, size: null };
+  }
+
+  return { valid: true, size };
+}
+
+function stripTransferControlFields(data) {
+  const { uploadToken, declaredFileSize, ...publicData } = data;
+  return publicData;
+}
+
+function estimateEncodedPayloadBytes(value) {
+  if (typeof value === 'string') {
+    return Math.ceil(value.length * 3 / 4);
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value).reduce((total, item) => total + estimateEncodedPayloadBytes(item), 0);
+  }
+  return 0;
+}
+
+function startFileTransfer(room, ws, fileId, options = {}) {
+  if (!room.activeTransfers.has(ws.id)) {
+    room.activeTransfers.set(ws.id, new Set());
+  }
+
+  room.activeTransfers.get(ws.id).add(fileId);
+  room.transferState.set(getTransferKey(ws, fileId), {
+    authorizedLarge: Boolean(options.authorizedLarge),
+    bytesRelayed: 0,
+    declaredSize: options.declaredSize ?? null,
+    totalChunks: null,
+    startedAt: Date.now(),
+  });
+}
+
+function finishFileTransfer(room, ws, fileId) {
+  const active = room.activeTransfers.get(ws.id);
+  if (active) {
+    active.delete(fileId);
+    if (active.size === 0) {
+      room.activeTransfers.delete(ws.id);
+    }
+  }
+  room.transferState.delete(getTransferKey(ws, fileId));
+}
+
+function getTransferState(room, ws, fileId) {
+  return room.transferState?.get(getTransferKey(ws, fileId));
+}
+
+function cancelFileTransfer(roomId, room, ws, fileId, code, message) {
+  sendError(ws, code, message);
+  broadcastToRoom(roomId, { type: 'file-cancel', fileId, senderId: ws.id }, ws);
+  finishFileTransfer(room, ws, fileId);
+}
+
+function registerTransferBytes(roomId, room, ws, fileId, totalChunks, bytes) {
+  const transfer = getTransferState(room, ws, fileId);
+  if (!transfer) {
+    sendError(ws, ERROR_CODES.FILE_TRANSFER_REQUIRED, 'File transfer must be announced before chunks are sent');
+    return false;
+  }
+
+  if (transfer.totalChunks !== null && transfer.totalChunks !== totalChunks) {
+    cancelFileTransfer(roomId, room, ws, fileId, ERROR_CODES.INVALID_MESSAGE, 'File chunk metadata mismatch');
+    return false;
+  }
+  transfer.totalChunks = totalChunks;
+
+  const nextBytes = transfer.bytesRelayed + bytes;
+  if (nextBytes > CONFIG.MAX_FILE_SIZE + CONFIG.FILE_SIZE_ENFORCEMENT_GRACE_BYTES) {
+    cancelFileTransfer(roomId, room, ws, fileId, ERROR_CODES.FILE_TOO_LARGE, `File exceeds maximum size of ${CONFIG.MAX_FILE_SIZE} bytes`);
+    return false;
+  }
+
+  if (
+    !transfer.authorizedLarge
+    && nextBytes > CONFIG.LARGE_FILE_PASSWORD_THRESHOLD + CONFIG.FILE_SIZE_ENFORCEMENT_GRACE_BYTES
+  ) {
+    cancelFileTransfer(roomId, room, ws, fileId, ERROR_CODES.LARGE_FILE_AUTH_REQUIRED, 'Large files require upload password verification');
+    return false;
+  }
+
+  transfer.bytesRelayed = nextBytes;
+  return true;
+}
+
 function broadcastToRoom(roomId, data, excludeWs = null) {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -347,11 +595,23 @@ function validateRoomId(roomId) {
 }
 
 function validateFileStart(data) {
-  if (!data. fileId || typeof data.fileId !== 'string') {
+  if (!isValidFileId(data.fileId)) {
     return { valid:  false, code: ERROR_CODES. INVALID_FILE_ID, message: 'Invalid file ID' };
   }
-  if (data.fileSize && data.fileSize > CONFIG.MAX_FILE_SIZE) {
+
+  const declaredFileSize = parseDeclaredFileSize(data);
+  if (!declaredFileSize.valid) {
+    return { valid: false, code: ERROR_CODES.INVALID_MESSAGE, message: 'Invalid file size' };
+  }
+  if (declaredFileSize.size !== null && declaredFileSize.size > CONFIG.MAX_FILE_SIZE) {
     return { valid:  false, code: ERROR_CODES.FILE_TOO_LARGE, message: `File exceeds maximum size of ${CONFIG.MAX_FILE_SIZE} bytes` };
+  }
+  if (
+    declaredFileSize.size !== null
+    && declaredFileSize.size > CONFIG.LARGE_FILE_PASSWORD_THRESHOLD
+    && !isUploadTokenValid(data.uploadToken)
+  ) {
+    return { valid: false, code: ERROR_CODES.LARGE_FILE_AUTH_REQUIRED, message: 'Large files require upload password verification' };
   }
   if (data. fileName && (typeof data.fileName !== 'string' || data.fileName.length > CONFIG.MAX_FILENAME_LENGTH)) {
     return { valid: false, code: ERROR_CODES.INVALID_FILENAME, message: 'Invalid filename' };
@@ -360,13 +620,16 @@ function validateFileStart(data) {
 }
 
 function validateFileChunk(data) {
-  if (! data.fileId || typeof data.fileId !== 'string') {
+  if (!isValidFileId(data.fileId)) {
     return { valid: false, code: ERROR_CODES.INVALID_FILE_ID, message:  'Invalid file ID' };
   }
-  if (typeof data.chunkIndex !== 'number' || typeof data.totalChunks !== 'number') {
+  if (
+    !Number.isSafeInteger(data.chunkIndex)
+    || !Number.isSafeInteger(data.totalChunks)
+  ) {
     return { valid: false, code: ERROR_CODES.INVALID_MESSAGE, message: 'Invalid chunk data' };
   }
-  if (data.chunkIndex < 0 || data.chunkIndex >= data.totalChunks) {
+  if (data.totalChunks === 0 || data.totalChunks > CONFIG.MAX_TOTAL_CHUNKS || data.chunkIndex < 0 || data.chunkIndex >= data.totalChunks) {
     return { valid:  false, code: ERROR_CODES. INVALID_MESSAGE, message: 'Chunk index out of range' };
   }
   return { valid: true };
@@ -377,7 +640,7 @@ function decodeBinaryFrameHeader(data) {
   if (buffer.length < 10) return null;
 
   const idLen = buffer.readUInt16BE(0);
-  if (idLen === 0 || idLen > 1024 || 2 + idLen + 8 > buffer.length) {
+  if (idLen === 0 || idLen > CONFIG.MAX_FILE_ID_LENGTH || 2 + idLen + 8 > buffer.length) {
     return null;
   }
 
@@ -385,12 +648,13 @@ function decodeBinaryFrameHeader(data) {
   const fileId = buffer.toString('utf8', 2, offset);
   const chunkIndex = buffer.readUInt32BE(offset);
   const totalChunks = buffer.readUInt32BE(offset + 4);
+  const payloadOffset = offset + 8;
 
-  if (totalChunks === 0 || chunkIndex >= totalChunks) {
+  if (!isValidFileId(fileId) || totalChunks === 0 || totalChunks > CONFIG.MAX_TOTAL_CHUNKS || chunkIndex >= totalChunks) {
     return null;
   }
 
-  return { fileId, chunkIndex, totalChunks };
+  return { fileId, chunkIndex, totalChunks, payloadLength: buffer.length - payloadOffset };
 }
 
 // =============================================================================
@@ -414,7 +678,7 @@ function handleJoin(ws, roomId, publicKey) {
   // Get existing room or create a new one (restored original behavior)
   let room = rooms.get(roomId);
   if (!room) {
-    room = { clients: new Map(), lastActivity: Date.now(), activeTransfers: new Map() };
+    room = createRoomState();
     rooms.set(roomId, room);
     metrics.roomsCreated++;
     log(LOG_LEVELS. INFO, `[ROOM ${roomId}] Created by client ${ws.id} via join`);
@@ -457,7 +721,7 @@ function handleCreate(ws, publicKey) {
   }
 
   const roomId = generateRoomId();
-  const room = { clients: new Map(), lastActivity: Date.now(), activeTransfers: new Map() };
+  const room = createRoomState();
   rooms.set(roomId, room);
 
   ws.roomId = roomId;
@@ -495,12 +759,12 @@ function handleLeave(ws) {
 
   // Cancel any active file transfers from the disconnected client
   if (room.activeTransfers. has(ws.id)) {
-    const fileIds = room.activeTransfers. get(ws.id);
+    const fileIds = Array.from(room.activeTransfers. get(ws.id));
     fileIds.forEach(fileId => {
       log(LOG_LEVELS. WARN, `[ROOM ${roomId}] Cancelling file transfer ${fileId} from disconnected client ${ws.id}`);
       broadcastToRoom(roomId, { type: 'file-cancel', fileId:  fileId, senderId: ws.id });
+      finishFileTransfer(room, ws, fileId);
     });
-    room.activeTransfers.delete(ws.id);
   }
 
   if (room.clients. size === 0) {
@@ -532,18 +796,13 @@ function handleClipboard(ws, data) {
   room.lastActivity = Date.now();
 
   const message = {
-    ... data,
+    ...stripTransferControlFields(data),
     senderId: ws.id,
     timestamp: Date.now()
   };
 
-  // If it's a file transfer, track it.
   if (data.fileId) {
-    if (!room.activeTransfers.has(ws.id)) {
-      room.activeTransfers.set(ws.id, new Set());
-    }
-    room.activeTransfers.get(ws.id).add(data.fileId);
-    log(LOG_LEVELS.INFO, `[ROOM ${ws. roomId}] Started file transfer ${data. fileId} from ${ws.id}`);
+    log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Relaying file metadata ${data.fileId} from ${ws.id}`);
   }
 
   log(LOG_LEVELS.INFO, `[ROOM ${ws. roomId}] Relaying '${data.type}' from ${ws.id}`);
@@ -566,19 +825,19 @@ function handleFileChunk(ws, data) {
   if (!room) return;
   room.lastActivity = Date.now();
 
+  const chunkBytes = estimateEncodedPayloadBytes(data.chunk || data.encryptedChunk);
+  if (!registerTransferBytes(ws.roomId, room, ws, data.fileId, data.totalChunks, chunkBytes)) {
+    return;
+  }
+
   const message = {
-    ...data,
+    ...stripTransferControlFields(data),
     senderId: ws.id,
   };
 
   // Clean up transfer tracking when the last chunk is sent
   if (data.chunkIndex === data. totalChunks - 1) {
-    if (room. activeTransfers.has(ws.id)) {
-      room.activeTransfers. get(ws.id).delete(data.fileId);
-      if (room.activeTransfers.get(ws.id).size === 0) {
-        room.activeTransfers.delete(ws.id);
-      }
-    }
+    finishFileTransfer(room, ws, data.fileId);
     metrics.filesTransferred++;
     log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Finished file transfer ${data.fileId} from ${ws.id}`);
   }
@@ -602,14 +861,14 @@ function handleFileStart(ws, data) {
   if (!room) return;
   room.lastActivity = Date.now();
 
-  // Track the file transfer
-  if (!room.activeTransfers.has(ws.id)) {
-    room.activeTransfers.set(ws.id, new Set());
-  }
-  room.activeTransfers.get(ws.id).add(data.fileId);
+  const declaredFileSize = parseDeclaredFileSize(data).size;
+  startFileTransfer(room, ws, data.fileId, {
+    authorizedLarge: isUploadTokenValid(data.uploadToken),
+    declaredSize: declaredFileSize,
+  });
 
   const message = {
-    ...data,
+    ...stripTransferControlFields(data),
     senderId: ws. id,
     timestamp: Date.now()
   };
@@ -637,6 +896,10 @@ function handleBinaryRelay(ws, data) {
     return;
   }
 
+  if (!registerTransferBytes(ws.roomId, room, ws, header.fileId, header.totalChunks, header.payloadLength)) {
+    return;
+  }
+
   // Relay binary frame as-is to every other client in the room
   room.clients.forEach(({ ws: client }) => {
     if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -654,13 +917,7 @@ function handleBinaryRelay(ws, data) {
   });
 
   if (header.chunkIndex === header.totalChunks - 1) {
-    const active = room.activeTransfers.get(ws.id);
-    if (active) {
-      active.delete(header.fileId);
-      if (active.size === 0) {
-        room.activeTransfers.delete(ws.id);
-      }
-    }
+    finishFileTransfer(room, ws, header.fileId);
     metrics.filesTransferred++;
     log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Finished binary file transfer ${header.fileId} from ${ws.id}`);
   }
@@ -673,10 +930,14 @@ function handleFileKey(ws, data) {
     sendError(ws, ERROR_CODES.NOT_IN_ROOM, 'Not in a room');
     return;
   }
+  if (!isValidFileId(data.fileId)) {
+    sendError(ws, ERROR_CODES.INVALID_FILE_ID, 'Invalid file ID');
+    return;
+  }
   const room = rooms.get(ws.roomId);
   if (!room) return;
   room.lastActivity = Date.now();
-  broadcastToRoom(ws.roomId, { ...data, senderId: ws.id }, ws);
+  broadcastToRoom(ws.roomId, { ...stripTransferControlFields(data), senderId: ws.id }, ws);
   log(LOG_LEVELS.INFO, `[ROOM ${ws.roomId}] Relaying 'file-key' for file ${data.fileId} from ${ws.id}`);
 }
 
@@ -688,7 +949,7 @@ function handleChunkAck(ws, data) {
   const room = rooms.get(ws.roomId);
   if (!room) return;
   room.lastActivity = Date.now();
-  broadcastToRoom(ws.roomId, { ...data, senderId: ws.id }, ws);
+  broadcastToRoom(ws.roomId, { ...stripTransferControlFields(data), senderId: ws.id }, ws);
 }
 
 // =============================================================================
@@ -795,6 +1056,8 @@ const heartbeatInterval = setInterval(() => {
   });
 }, CONFIG.HEARTBEAT_INTERVAL);
 
+const verifyPasswordCleanupInterval = setInterval(cleanupVerifyPasswordAttempts, 60 * 1000);
+
 // =============================================================================
 // INACTIVE ROOM CLEANUP
 // =============================================================================
@@ -839,7 +1102,7 @@ app.post('/api/verify-upload-password', (req, res) => {
     return res.status(500).json({ valid: false, error: 'LARGE_FILE_PASSWORD not configured on server' });
   }
 
-  if (!password || password !== CONFIG.LARGE_FILE_PASSWORD) {
+  if (!password || !timingSafeEqualString(password, CONFIG.LARGE_FILE_PASSWORD)) {
     state.attempts += 1;
     if (state.attempts >= CONFIG.VERIFY_PASSWORD_MAX_ATTEMPTS) {
       state.lockUntil = now + CONFIG.VERIFY_PASSWORD_LOCK_MS;
@@ -853,7 +1116,11 @@ app.post('/api/verify-upload-password', (req, res) => {
   }
 
   verifyPasswordAttempts.delete(ip);
-  return res.json({ valid: true });
+  return res.json({
+    valid: true,
+    uploadToken: createUploadToken(),
+    expiresInMs: CONFIG.UPLOAD_TOKEN_TTL_MS,
+  });
 });
 
 // Health check endpoint with metrics (Basic Auth protected)
@@ -868,7 +1135,7 @@ app.get('/health', (req, res) => {
     const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
     // Accept any username; only the password matters
     const password = decoded.includes(':') ? decoded.split(':').slice(1).join(':') : decoded;
-    if (password !== CONFIG.HEALTH_PASSWORD) {
+    if (!timingSafeEqualString(password, CONFIG.HEALTH_PASSWORD)) {
       res.setHeader('WWW-Authenticate', 'Basic realm="Health Check"');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -894,7 +1161,7 @@ app.get('/health', (req, res) => {
 
 // Catch-all for SPA
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 
 // =============================================================================
@@ -903,6 +1170,7 @@ app.get('*', (req, res) => {
 
 wss.on('close', () => {
   clearInterval(heartbeatInterval);
+  clearInterval(verifyPasswordCleanupInterval);
   clearInterval(inactiveRoomCheckInterval);
   clearInterval(roomStatusInterval);
 });

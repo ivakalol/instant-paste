@@ -19,6 +19,7 @@ export const uploadFile = async (
   file: File,
   fileId: string,
   previewContent: string | undefined,
+  uploadToken: string | undefined,
   deps: UploadDeps,
 ): Promise<void> => {
   const { ws, sendMessage, encryptionCtx, encryptFiles, onUpdate } = deps;
@@ -55,6 +56,8 @@ export const uploadFile = async (
   const fileStartSent = await sendMessage({
     type: 'file-start', fileId,
     fileName: file.name, fileSize: file.size, fileType: file.type,
+    declaredFileSize: file.size,
+    ...(uploadToken ? { uploadToken } : {}),
   });
   if (!fileStartSent) {
     onUpdate({ type: 'file-error', fileId, message: 'Failed to send file start metadata' });
