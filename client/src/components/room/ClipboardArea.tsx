@@ -8,7 +8,7 @@ import FilePreview from './FilePreview';
 import MediaViewer from '../common/MediaViewer';
 
 interface ClipboardAreaProps {
-  onPaste?: (type: string, content: string, name?: string, size?: number) => void;
+  onPaste?: (type: ClipboardHistoryItem['type'], content: string, name?: string, size?: number) => void;
   onFileSelect: (file: File) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
@@ -196,7 +196,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       if (item.type === 'rich-text' && navigator.clipboard && navigator.clipboard.write) {
         try {
           // Try to copy both HTML and a plain text version
-          const plainText = DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n');
+          const plainText = DOMPurify.sanitize(item.content.replace(/<br\s*\/?>/gi, '\n'), { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ');
           const clipboardItem = new ClipboardItem({
             'text/html': new Blob([item.content], { type: 'text/html' }),
             'text/plain': new Blob([plainText], { type: 'text/plain' })
@@ -213,7 +213,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       }
 
       const contentToCopy = item.type === 'rich-text' 
-        ? DOMPurify.sanitize(item.content, { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ').replace(/<br\s*\/?>/g, '\n')
+        ? DOMPurify.sanitize(item.content.replace(/<br\s*\/?>/gi, '\n'), { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ')
         : item.content;
 
       copyToClipboard(contentToCopy)
@@ -269,7 +269,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         showToast('Cannot download file while it is transferring.', 'info');
         return;
     }
-    const filename = item.name || `paste-${item.id}.dat`;
+    const filename = item.name || `paste-${item.id}`;
     
     if ((item.type === 'text' || item.type === 'rich-text') && !item.name) {
       const mimeType = item.type === 'rich-text' ? 'text/html' : 'text/plain';

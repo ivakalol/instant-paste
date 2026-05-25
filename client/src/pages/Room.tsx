@@ -10,8 +10,15 @@ import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import { createImageThumbnail } from '../utils/image';
 import '../App.css';
-
+//this is a test comit
 const MAX_HISTORY = 20;
+const ALLOWED_CONTENT_TYPES: ReadonlySet<ClipboardItem['type']> = new Set([
+  'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application',
+]);
+const toContentType = (value: string | undefined): ClipboardItem['type'] =>
+  value && (ALLOWED_CONTENT_TYPES as Set<string>).has(value)
+    ? (value as ClipboardItem['type'])
+    : 'text';
 const THUMBNAIL_MAX_WIDTH = 200;
 const THUMBNAIL_MAX_HEIGHT = 200;
 
@@ -237,7 +244,7 @@ const Room: React.FC = () => {
           });
         } else if (!message.fileId) {
           // This is a regular text or rich-text message
-          const contentType = (message.contentType as ClipboardItem['type']) || 'text';
+          const contentType = toContentType(message.contentType);
           const newItem: ClipboardItem = {
             id: createLocalId(),
             type: contentType,
@@ -383,12 +390,13 @@ const Room: React.FC = () => {
     }
   }, [uploadFile, showToast, prependHistoryItem]);
 
-  const handlePaste = useCallback(async (type: string, content: string) => {
+  const handlePaste = useCallback(async (type: ClipboardItem['type'], content: string) => {
     // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
     const sizeInBytes = new Blob([content]).size;
     if (sizeInBytes > 1024 * 1024) {
       showToast('Content too large. sending as file...', 'info');
-      const filename = type === 'rich-text' ? `Rich Text ${new Date().toLocaleTimeString()}.html` : `Large Text ${new Date().toLocaleTimeString()}.txt`;
+      const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = type === 'rich-text' ? `Rich Text ${safeTimestamp}.html` : `Large Text ${safeTimestamp}.txt`;
       const file = new File([content], filename, { type: type === 'rich-text' ? 'text/html' : 'text/plain' });
       handleFileSelect(file);
       return;
@@ -487,3 +495,4 @@ const Room: React.FC = () => {
 };
 
 export default Room;
+
