@@ -12,7 +12,7 @@ export interface WebSocketMessage {
   clientId?: string;
   publicKey?: JsonWebKey;
   clientCount?: number;
-  
+
   // Fields for file chunking
   fileName?: string;
   fileSize?: number;
@@ -21,6 +21,8 @@ export interface WebSocketMessage {
   collectionId?: string;
   collectionTotal?: number;
   collectionIndex?: number;
+  declaredFileSize?: number; // Server-visible size for transfer policy enforcement
+  uploadToken?: string; // Short-lived token required for large uploads
   chunk?: string; // Base64 encoded chunk (legacy)
   encryptedChunk?: string | Record<string, string>; // (legacy)
   encryptedDataKey?: string | Record<string, string>; // Per-recipient encrypted data key for file transfers

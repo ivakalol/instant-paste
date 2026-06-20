@@ -25,6 +25,7 @@ export const uploadFile = async (
   file: File,
   fileId: string,
   previewContent: string | undefined,
+  uploadToken: string | undefined,
   deps: UploadDeps,
   collection?: FileUploadCollection,
 ): Promise<void> => {
@@ -65,6 +66,8 @@ export const uploadFile = async (
     collectionId: collection?.collectionId,
     collectionTotal: collection?.collectionTotal,
     collectionIndex: collection?.collectionIndex,
+    declaredFileSize: file.size,
+    ...(uploadToken ? { uploadToken } : {}),
   });
   if (!fileStartSent) {
     onUpdate({ type: 'file-error', fileId, message: 'Failed to send file start metadata' });

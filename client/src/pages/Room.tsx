@@ -579,7 +579,7 @@ const Room: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [history, roomId, showToast, isHistoryLoaded]);
 
-  const handleFileSelect = useCallback(async (file: File) => {
+  const handleFileSelect = useCallback(async (file: File, uploadToken?: string) => {
     const fileId = createLocalId();
 
     // Create a placeholder for the sender's UI immediately
@@ -602,16 +602,16 @@ const Room: React.FC = () => {
 
     // The hook now handles the entire upload sequence
     if (uploadFile) {
-        await uploadFile(file, fileId, previewContent);
+        await uploadFile(file, fileId, previewContent, uploadToken);
     } else {
        showToast('File upload is not available.', 'error');
     }
   }, [uploadFile, showToast, prependHistoryItem]);
 
-  const handleFilesSelect = useCallback(async (files: File[]) => {
+  const handleFilesSelect = useCallback(async (files: File[], uploadToken?: string) => {
     if (files.length === 0) return;
     if (files.length === 1) {
-      await handleFileSelect(files[0]);
+      await handleFileSelect(files[0], uploadToken);
       return;
     }
 
@@ -663,7 +663,7 @@ const Room: React.FC = () => {
       const fullFileBlobUrl = URL.createObjectURL(file);
       setHistory(prev => updateFilePreviewInHistory(prev, item.fileId!, previewContent, fullFileBlobUrl));
 
-      await uploadFile(file, item.fileId, previewContent, {
+      await uploadFile(file, item.fileId, previewContent, uploadToken, {
         collectionId,
         collectionTotal,
         collectionIndex: index,

@@ -52,7 +52,7 @@ Then open http://localhost:3000 in your browser!
    ```
 
 6. **Open your browser**
-   
+
    Navigate to: http://localhost:3000
 
 ## First Use
@@ -96,8 +96,10 @@ To access from your phone on the same network:
 
 2. On your phone's browser, navigate to:
    ```
-   http://YOUR_COMPUTER_IP:3000
-   ```
+  http://YOUR_COMPUTER_IP:3000
+  ```
+
+For clipboard permissions and end-to-end encryption, browsers need a secure context. `localhost` is treated as secure, but a LAN IP usually needs HTTPS.
 
 ## External Access
 
@@ -114,6 +116,8 @@ ngrok http 3000
 ```
 
 Both will give you a public URL to access your server!
+
+Before exposing the app publicly, copy `.env.example` to `.env`, set `NODE_ENV=production`, configure `ALLOWED_ORIGINS`, and replace both password placeholders with long random secrets.
 
 ---
 

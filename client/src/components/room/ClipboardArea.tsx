@@ -9,8 +9,8 @@ import MediaViewer from '../common/MediaViewer';
 
 interface ClipboardAreaProps {
   onPaste?: (type: ClipboardHistoryItem['type'], content: string, name?: string, size?: number) => void;
-  onFileSelect: (file: File) => void;
-  onFilesSelect: (files: File[]) => void;
+  onFileSelect: (file: File, uploadToken?: string) => void;
+  onFilesSelect: (files: File[], uploadToken?: string) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -46,9 +46,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const [viewerItem, setViewerItem] = useState<ClipboardHistoryItem | null>(null);
 
   useEffect(() => {
-    const completedItems = history.filter(item => 
-      item.status === 'complete' && 
-      (item.fileId || item.type === 'collection') && 
+    const completedItems = history.filter(item =>
+      item.status === 'complete' &&
+      (item.fileId || item.type === 'collection') &&
       !recentlyCompleted.has(item.id)
     );
 
@@ -85,8 +85,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  const verifyLargeFileUpload = useCallback(async (files: File[]) => {
+  const verifyLargeFileUpload = useCallback(async (files: File[]): Promise<string | undefined | false> => {
     const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
+    let uploadToken: string | undefined;
 
     if (files.some(file => file.size > passwordPromptSize)) {
       const enteredPassword = prompt(`One or more files are larger than 150MB. Please enter the password to proceed:`);
@@ -100,23 +101,25 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           body: JSON.stringify({ password: enteredPassword }),
         });
         const data = await response.json();
-        if (!data.valid) {
+        if (!data.valid || typeof data.uploadToken !== 'string') {
           showToast('Incorrect password.', 'error');
           return false;
         }
+        uploadToken = data.uploadToken;
       } catch {
         showToast('Password verification failed. Please try again.', 'error');
         return false;
       }
     }
-    return true;
+    return uploadToken;
   }, [showToast]);
 
   const handleFileSelected = useCallback(async (file: File) => {
-    if (!(await verifyLargeFileUpload([file]))) {
+    const uploadToken = await verifyLargeFileUpload([file]);
+    if (uploadToken === false) {
       return;
     }
-    onFileSelect(file);
+    onFileSelect(file, uploadToken);
   }, [onFileSelect, verifyLargeFileUpload]);
 
   const handleFilesSelected = useCallback(async (selectedFiles: File[] | FileList) => {
@@ -126,10 +129,11 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       await handleFileSelected(files[0]);
       return;
     }
-    if (!(await verifyLargeFileUpload(files))) {
+    const uploadToken = await verifyLargeFileUpload(files);
+    if (uploadToken === false) {
       return;
     }
-    onFilesSelect(files);
+    onFilesSelect(files, uploadToken);
   }, [handleFileSelected, onFilesSelect, verifyLargeFileUpload]);
 
   const processClipboardItem = useCallback((item: DataTransferItem) => {
@@ -296,7 +300,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         }
       }
 
-      const contentToCopy = item.type === 'rich-text' 
+      const contentToCopy = item.type === 'rich-text'
         ? DOMPurify.sanitize(item.content.replace(/<br\s*\/?>/gi, '\n'), { ALLOWED_TAGS: [] }).replace(/&nbsp;/g, ' ')
         : item.content;
 
@@ -373,7 +377,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         return;
     }
     const filename = item.name || `paste-${item.id}`;
-    
+
     if ((item.type === 'text' || item.type === 'rich-text') && !item.name) {
       const mimeType = item.type === 'rich-text' ? 'text/html' : 'text/plain';
       const ext = item.type === 'rich-text' ? 'html' : 'txt';
@@ -674,8 +678,8 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                       </div>
                     ) : item.type === 'rich-text' ? (
                       <div className={`clip-card__rich-text ${expandedItems.has(item.id) ? 'clip-card__rich-text--expanded' : ''}`}>
-                        <div 
-                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }} 
+                        <div
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.content) }}
                         />
                         {item.content.length > 500 && (
                           <button onClick={() => toggleExpand(item.id)} className="clip-card__expand">
@@ -692,9 +696,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                           }
                         }}
                       >
-                        <FilePreview 
+                        <FilePreview
                           key={item.id + item.content}
-                          item={item} 
+                          item={item}
                           onMediaError={handleMediaError}
                           loadErrors={loadErrors}
                         />
