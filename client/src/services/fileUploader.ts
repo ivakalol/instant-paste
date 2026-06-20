@@ -15,11 +15,18 @@ export interface UploadDeps {
   onUpdate: (update: WebSocketMessage) => void;
 }
 
+export interface FileUploadCollection {
+  collectionId: string;
+  collectionTotal: number;
+  collectionIndex: number;
+}
+
 export const uploadFile = async (
   file: File,
   fileId: string,
   previewContent: string | undefined,
   deps: UploadDeps,
+  collection?: FileUploadCollection,
 ): Promise<void> => {
   const { ws, sendMessage, encryptionCtx, encryptFiles, onUpdate } = deps;
 
@@ -55,6 +62,9 @@ export const uploadFile = async (
   const fileStartSent = await sendMessage({
     type: 'file-start', fileId,
     fileName: file.name, fileSize: file.size, fileType: file.type,
+    collectionId: collection?.collectionId,
+    collectionTotal: collection?.collectionTotal,
+    collectionIndex: collection?.collectionIndex,
   });
   if (!fileStartSent) {
     onUpdate({ type: 'file-error', fileId, message: 'Failed to send file start metadata' });
@@ -65,9 +75,12 @@ export const uploadFile = async (
     type: 'clipboard',
     contentType: file.type.startsWith('image/') ? 'image'
       : file.type.startsWith('video/') ? 'video'
-      : file.type.startsWith('audio/') ? 'audio' : 'file',
+    : file.type.startsWith('audio/') ? 'audio' : 'file',
     fileId, fileName: file.name, fileSize: file.size,
     fileType: file.type, totalChunks, previewContent,
+    collectionId: collection?.collectionId,
+    collectionTotal: collection?.collectionTotal,
+    collectionIndex: collection?.collectionIndex,
   });
   if (!fileMetaSent) {
     onUpdate({ type: 'file-error', fileId, message: 'Failed to send file metadata' });

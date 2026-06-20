@@ -40,8 +40,8 @@ const CONFIG = {
   MAX_FILENAME_LENGTH: 255,
 
   // WebSocket settings
-  WS_MAX_PAYLOAD:  2 * 1024 * 1024, // 2MB
-  WS_SEND_BUFFER_HIGH_WATER: Number(process.env.WS_SEND_BUFFER_HIGH_WATER || 32 * 1024 * 1024), // 32MB
+  WS_MAX_PAYLOAD: Number(process.env.WS_MAX_PAYLOAD || 8 * 1024 * 1024), // 8MB
+  WS_SEND_BUFFER_HIGH_WATER: Number(process.env.WS_SEND_BUFFER_HIGH_WATER || 64 * 1024 * 1024), // 64MB
   HEARTBEAT_INTERVAL:  30000, // 30 seconds
   HTTP_JSON_LIMIT: process.env.HTTP_JSON_LIMIT || '16kb',
 };

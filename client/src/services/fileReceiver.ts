@@ -1,6 +1,6 @@
 // Handles incoming binary file chunks: reassembly, decryption, and completion.
 
-import { decodeBinaryFrame, toBlobArrayBuffer } from './binaryProtocol';
+import { decodeBinaryFrame } from './binaryProtocol';
 import { decryptChunk } from '../utils/e2ee';
 import { WebSocketMessage } from '../types';
 
@@ -24,7 +24,7 @@ export interface ActiveFileTransfer {
 
 export interface FileReceiverState {
   activeTransfers: Map<string, ActiveFileTransfer>;
-  memoryChunks: Map<string, (ArrayBuffer | null)[]>;
+  memoryChunks: Map<string, (BlobPart | null)[]>;
   orphanBinaryChunks: Map<string, ArrayBuffer[]>;
   pendingDataKeys: Map<string, CryptoKey>;
 }
@@ -93,8 +93,7 @@ export const handleBinaryChunk = async (
     state.memoryChunks.set(fileId, new Array(totalChunks).fill(null));
   }
 
-  const stored = toBlobArrayBuffer(plainBytes);
-  state.memoryChunks.get(fileId)![chunkIndex] = stored;
+  state.memoryChunks.get(fileId)![chunkIndex] = plainBytes;
   transfer.receivedChunks.add(chunkIndex);
 
   const progress = (transfer.receivedChunks.size / totalChunks) * 100;

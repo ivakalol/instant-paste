@@ -1,8 +1,8 @@
 // Binary frame codec for WebSocket file chunk transfers.
 // Format: [2B fileId-length][fileId UTF-8][4B chunkIndex][4B totalChunks][...data]
 
-export const CHUNK_SIZE = 1024 * 1024; // 1 MB
-export const BUFFER_HIGH_WATER = 8 * 1024 * 1024; // 8 MB
+export const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB
+export const BUFFER_HIGH_WATER = 24 * 1024 * 1024; // 24 MB
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();

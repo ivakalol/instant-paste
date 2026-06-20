@@ -20,7 +20,7 @@ import { uploadFile as _uploadFile } from '../services/fileUploader';
 interface UseWebSocketReturn {
   roomState: RoomState;
   sendMessage: (message: WebSocketMessage) => Promise<boolean>;
-  uploadFile?: (file: File, fileId: string, previewContent?: string) => void;
+  uploadFile?: (file: File, fileId: string, previewContent?: string, collection?: FileUploadCollection) => void;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<boolean>;
   leaveRoom: () => void;
@@ -33,6 +33,12 @@ interface UseWebSocketReturn {
 interface RoomClient {
   id: string;
   publicKey?: JsonWebKey;
+}
+
+interface FileUploadCollection {
+  collectionId: string;
+  collectionTotal: number;
+  collectionIndex: number;
 }
 
 // ─── Hook ────────────────────────────────────────────────────
@@ -368,6 +374,8 @@ export const useWebSocket = (
       const meta = {
         fileName: msg.fileName, fileSize: msg.fileSize, fileType: msg.fileType,
         contentType: msg.contentType, previewContent: msg.previewContent,
+        collectionId: msg.collectionId, collectionTotal: msg.collectionTotal,
+        collectionIndex: msg.collectionIndex,
       };
       if (Object.values(meta).some(v => v !== undefined)) {
         const encrypted = await encryptForRecipients(JSON.stringify(meta));
@@ -375,7 +383,8 @@ export const useWebSocket = (
         if (encrypted) {
           msg = {
             ...msg, fileName: undefined, fileSize: undefined, fileType: undefined,
-            contentType: undefined, previewContent: undefined, encryptedMetadata: encrypted,
+            contentType: undefined, previewContent: undefined, collectionId: undefined,
+            collectionTotal: undefined, collectionIndex: undefined, encryptedMetadata: encrypted,
           };
         }
       }
@@ -399,7 +408,7 @@ export const useWebSocket = (
 
   // ── Upload file (delegates to service) ─────────────────────
 
-  const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string) => {
+  const uploadFile = useCallback(async (file: File, fileId: string, previewContent?: string, collection?: FileUploadCollection) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
 
     await _uploadFile(file, fileId, previewContent, {
@@ -408,7 +417,7 @@ export const useWebSocket = (
       encryptionCtx: { isE2eeEnabled, keyPair, roomClients, clientId: roomState.clientId },
       encryptFiles,
       onUpdate: (u) => onFileTransferUpdateRef.current?.(u),
-    });
+    }, collection);
   }, [sendMessage, isE2eeEnabled, keyPair, encryptFiles, roomClients, roomState.clientId]);
 
   // ── Room operations ────────────────────────────────────────
