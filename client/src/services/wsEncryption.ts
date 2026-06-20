@@ -76,6 +76,9 @@ export const decryptMetadata = async (
       fileType: parsed.fileType,
       contentType: parsed.contentType,
       previewContent: parsed.previewContent,
+      collectionId: parsed.collectionId,
+      collectionTotal: parsed.collectionTotal,
+      collectionIndex: parsed.collectionIndex,
     };
   } catch {
     console.error('Failed to parse decrypted metadata');

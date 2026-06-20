@@ -396,6 +396,188 @@
   opacity: 0.9;
 }
 
+/* ── Multi-file folder clips ───────────────────────────────── */
+
+.collection-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.collection-folder__summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--text-color);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collection-folder__icon {
+  width: 48px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.collection-folder__details {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.collection-folder__details strong {
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: var(--text-color);
+}
+
+.collection-folder__details span {
+  font-size: 0.78rem;
+  color: var(--secondary-color);
+}
+
+.collection-folder__chevron {
+  display: inline-flex;
+  color: var(--secondary-color);
+  transition: transform 0.15s ease;
+}
+
+.collection-folder__chevron--open {
+  transform: rotate(180deg);
+}
+
+.collection-folder__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 72px));
+  gap: 0.45rem;
+}
+
+.collection-folder__preview-tile {
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--secondary-color);
+  background: var(--input-background);
+  border: 1px solid var(--border-color);
+}
+
+.collection-folder__preview-tile img,
+.collection-folder__preview-tile video,
+.collection-file__thumb img,
+.collection-file__thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.collection-folder__preview-tile--more {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--input-background));
+}
+
+.collection-folder__progress {
+  margin-top: -0.2rem;
+}
+
+.collection-folder__files {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.collection-file {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--input-background) 58%, transparent);
+}
+
+.collection-file__thumb {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  color: var(--secondary-color);
+  background: var(--card-background);
+}
+
+.collection-file__thumb--clickable {
+  cursor: pointer;
+}
+
+.collection-file__thumb--clickable:hover {
+  border-color: var(--primary-color);
+}
+
+.collection-file__thumb:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.collection-file__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.collection-file__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.collection-file__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.73rem;
+  color: var(--secondary-color);
+}
+
+.collection-file__progress {
+  width: min(180px, 100%);
+  margin-top: 2px;
+}
+
+.collection-file__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .file-preview.generating {
   display: flex;
   flex-direction: column;
@@ -446,5 +628,25 @@
   .clip-card__actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .collection-folder__preview-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .collection-file {
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .collection-file__thumb {
+    width: 44px;
+    height: 44px;
+  }
+
+  .collection-file__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    flex-wrap: wrap;
   }
 }

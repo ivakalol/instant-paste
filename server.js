@@ -52,8 +52,8 @@ const CONFIG = {
   UPLOAD_TOKEN_TTL_MS: parsePositiveInt(process.env.UPLOAD_TOKEN_TTL_MS, 30 * 60 * 1000),
 
   // WebSocket settings
-  WS_MAX_PAYLOAD: parsePositiveInt(process.env.WS_MAX_PAYLOAD_BYTES, 3 * ONE_MIB), // Supports 2MB chunks plus encrypted overhead
-  WS_SEND_BUFFER_HIGH_WATER: parsePositiveInt(process.env.WS_SEND_BUFFER_HIGH_WATER, 16 * ONE_MIB),
+  WS_MAX_PAYLOAD: parsePositiveInt(process.env.WS_MAX_PAYLOAD_BYTES, 8 * ONE_MIB), // Supports 4MB chunks plus encrypted overhead
+  WS_SEND_BUFFER_HIGH_WATER: parsePositiveInt(process.env.WS_SEND_BUFFER_HIGH_WATER, 64 * ONE_MIB),
   HEARTBEAT_INTERVAL:  30000, // 30 seconds
   HTTP_JSON_LIMIT: process.env.HTTP_JSON_LIMIT || '16kb',
 };

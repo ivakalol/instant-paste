@@ -13,7 +13,7 @@ import '../App.css';
 //this is a test comit
 const MAX_HISTORY = 20;
 const ALLOWED_CONTENT_TYPES: ReadonlySet<ClipboardItem['type']> = new Set([
-  'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application',
+  'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application', 'collection',
 ]);
 const toContentType = (value: string | undefined): ClipboardItem['type'] =>
   value && (ALLOWED_CONTENT_TYPES as Set<string>).has(value)
@@ -59,7 +59,238 @@ const revokeClipboardItemUrls = (item: ClipboardItem) => {
   if (item.previewContent?.startsWith('blob:')) {
     URL.revokeObjectURL(item.previewContent);
   }
+  item.items?.forEach(revokeClipboardItemUrls);
 };
+
+const trimHistory = (items: ClipboardItem[]) => {
+  items.slice(MAX_HISTORY).forEach(revokeClipboardItemUrls);
+  return items.slice(0, MAX_HISTORY);
+};
+
+const getCollectionName = (items: ClipboardItem[], total = items.length) => {
+  const count = total || items.length;
+  const allKnownItemsArePhotos = items.length > 0 && items.every(item => item.type === 'image');
+  const noun = allKnownItemsArePhotos
+    ? (count === 1 ? 'photo' : 'photos')
+    : (count === 1 ? 'file' : 'files');
+  return `${count} ${noun}`;
+};
+
+const getTransferProgress = (item: ClipboardItem) => (
+  item.status === 'complete' || !item.status ? 100 : item.progress ?? 0
+);
+
+const sortCollectionItems = (items: ClipboardItem[]) => (
+  [...items].sort((a, b) => {
+    const aIndex = a.collectionIndex ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = b.collectionIndex ?? Number.MAX_SAFE_INTEGER;
+    return aIndex - bIndex || a.timestamp - b.timestamp;
+  })
+);
+
+const refreshCollectionItem = (item: ClipboardItem): ClipboardItem => {
+  const items = sortCollectionItems(item.items ?? []);
+  const collectionTotal = item.collectionTotal ?? items.length;
+  const progressDivisor = collectionTotal || items.length || 1;
+  const totalProgress = items.reduce((sum, child) => sum + getTransferProgress(child), 0);
+  const allComplete = items.length > 0
+    && items.length >= collectionTotal
+    && items.every(child => child.status === 'complete' || !child.status);
+  const hasDownloading = items.some(child => child.status === 'downloading');
+  const hasUploading = items.some(child => child.status === 'uploading' || child.status === 'generating');
+
+  return {
+    ...item,
+    collectionTotal,
+    items,
+    name: getCollectionName(items, collectionTotal),
+    size: items.reduce((sum, child) => sum + (child.size ?? 0), 0),
+    status: allComplete ? 'complete' : hasDownloading ? 'downloading' : hasUploading ? 'uploading' : item.status,
+    progress: allComplete ? 100 : totalProgress / progressDivisor,
+  };
+};
+
+const createLocalFileItem = (
+  file: File,
+  fileId: string,
+  timestamp: number,
+  collectionId?: string,
+  collectionTotal?: number,
+  collectionIndex?: number,
+): ClipboardItem => {
+  const fileType = getClipboardItemType(undefined, file.type);
+  return {
+    id: fileId,
+    fileId,
+    collectionId,
+    collectionTotal,
+    collectionIndex,
+    type: fileType,
+    content: '',
+    name: file.name,
+    size: file.size,
+    timestamp,
+    encrypted: true,
+    status: fileType === 'image' ? 'generating' : 'uploading',
+    progress: 0,
+  };
+};
+
+const createIncomingFileItem = (
+  message: WebSocketMessage,
+  status: ClipboardItem['status'],
+): ClipboardItem => ({
+  id: message.fileId!,
+  fileId: message.fileId,
+  collectionId: message.collectionId,
+  collectionTotal: message.collectionTotal,
+  collectionIndex: message.collectionIndex,
+  type: getClipboardItemType(message.contentType, message.fileType),
+  content: '',
+  previewContent: message.previewContent,
+  timestamp: message.timestamp || Date.now(),
+  name: message.fileName,
+  size: message.fileSize,
+  encrypted: true,
+  status,
+  progress: 0,
+});
+
+const upsertCollectionFile = (
+  history: ClipboardItem[],
+  collectionId: string,
+  incomingFile: ClipboardItem,
+  collectionTotal?: number,
+) => {
+  let foundCollection = false;
+
+  const next = history.map(item => {
+    if (item.type !== 'collection' || item.collectionId !== collectionId) {
+      return item;
+    }
+
+    foundCollection = true;
+    let foundFile = false;
+    const items = (item.items ?? []).map(child => {
+      if (child.fileId !== incomingFile.fileId) return child;
+
+      foundFile = true;
+      return {
+        ...child,
+        ...incomingFile,
+        content: incomingFile.content || child.content,
+        previewContent: incomingFile.previewContent ?? child.previewContent,
+        name: incomingFile.name ?? child.name,
+        size: incomingFile.size ?? child.size,
+        status: child.status === 'complete' ? 'complete' as const : incomingFile.status ?? child.status,
+        progress: incomingFile.progress ?? child.progress,
+      };
+    });
+
+    if (!foundFile) {
+      items.push(incomingFile);
+    }
+
+    return refreshCollectionItem({
+      ...item,
+      collectionTotal: collectionTotal ?? item.collectionTotal ?? incomingFile.collectionTotal,
+      items,
+    });
+  });
+
+  if (foundCollection) return next;
+
+  const collection = refreshCollectionItem({
+    id: collectionId,
+    collectionId,
+    collectionTotal: collectionTotal ?? incomingFile.collectionTotal,
+    type: 'collection',
+    content: '',
+    timestamp: incomingFile.timestamp,
+    encrypted: true,
+    status: incomingFile.status,
+    progress: incomingFile.progress,
+    items: [incomingFile],
+  });
+
+  return trimHistory([collection, ...history]);
+};
+
+const updateFileInHistory = (
+  history: ClipboardItem[],
+  fileId: string,
+  updater: (item: ClipboardItem) => ClipboardItem | null,
+) => (
+  history.map(item => {
+    if (item.fileId === fileId) {
+      return updater(item);
+    }
+
+    if (item.type === 'collection' && item.items?.length) {
+      let changed = false;
+      let removedChild = false;
+      const items = item.items.map(child => {
+        if (child.fileId !== fileId) return child;
+
+        changed = true;
+        const updatedChild = updater(child);
+        if (!updatedChild) removedChild = true;
+        return updatedChild;
+      }).filter(Boolean) as ClipboardItem[];
+
+      if (!changed) return item;
+      if (items.length === 0) return null;
+
+      return refreshCollectionItem({
+        ...item,
+        collectionTotal: removedChild ? items.length : item.collectionTotal,
+        items,
+      });
+    }
+
+    return item;
+  }).filter(Boolean) as ClipboardItem[]
+);
+
+const updateFilePreviewInHistory = (
+  history: ClipboardItem[],
+  fileId: string,
+  previewContent: string | undefined,
+  content: string,
+) => updateFileInHistory(history, fileId, item => ({
+  ...item,
+  previewContent,
+  content,
+  status: 'uploading',
+}));
+
+const getCollectionUploadConcurrency = (files: File[]) => {
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  const hasVideo = files.some(file => file.type.startsWith('video/'));
+
+  if (hasVideo || totalSize > 200 * 1024 * 1024) {
+    return 1;
+  }
+
+  return Math.min(3, files.length);
+};
+
+async function runUploadQueue<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(items[index], index);
+    }
+  }));
+}
 
 interface ToastState {
   message: string;
@@ -147,17 +378,14 @@ const Room: React.FC = () => {
     setHistory(prev => {
       if (prev.some(item => item.id === newItem.id)) return prev;
 
-      const next = [newItem, ...prev];
-      next.slice(MAX_HISTORY).forEach(revokeClipboardItemUrls);
-      return next.slice(0, MAX_HISTORY);
+      return trimHistory([newItem, ...prev]);
     });
   }, []);
 
   const handleFileTransferUpdate = useCallback((update: WebSocketMessage) => {
     if (!update.fileId) return;
 
-    setHistory(prev => prev.map(item => {
-      if (item.fileId === update.fileId) {
+    setHistory(prev => updateFileInHistory(prev, update.fileId!, item => {
         const newItem = { ...item };
         if (update.type === 'file-progress') {
           newItem.progress = update.progress;
@@ -177,9 +405,7 @@ const Room: React.FC = () => {
           return null; // remove from history
         }
         return newItem;
-      }
-      return item;
-    }).filter(Boolean) as ClipboardItem[]);
+    }));
   }, [showToast]);
 
   const handleClipboardReceived = useCallback((message: WebSocketMessage) => {
@@ -187,25 +413,33 @@ const Room: React.FC = () => {
     switch (message.type) {
       case 'file-start':
         if (message.fileId) {
-          const newItem: ClipboardItem = {
-            id: message.fileId,
-            fileId: message.fileId,
-            type: getClipboardItemType(message.contentType, message.fileType),
-            content: '', // No content yet
-            timestamp: message.timestamp || Date.now(),
-            name: message.fileName,
-            size: message.fileSize,
-            encrypted: true,
-            status: 'generating', // New status for waiting for thumbnail
-            progress: 0,
-          };
-          prependHistoryItem(newItem);
+          const newItem = createIncomingFileItem(message, 'generating');
+          if (message.collectionId) {
+            setHistory(prev => upsertCollectionFile(
+              prev,
+              message.collectionId!,
+              newItem,
+              message.collectionTotal,
+            ));
+          } else {
+            prependHistoryItem(newItem);
+          }
         }
         break;
 
       case 'clipboard':
         if (message.fileId) {
           const fileId = message.fileId;
+          if (message.collectionId) {
+            setHistory(prev => upsertCollectionFile(
+              prev,
+              message.collectionId!,
+              createIncomingFileItem(message, 'downloading'),
+              message.collectionTotal,
+            ));
+            break;
+          }
+
           setHistory(prev => {
             let updatedExisting = false;
             const next = prev.map(item => {
@@ -238,9 +472,7 @@ const Room: React.FC = () => {
               status: 'downloading',
               progress: 0,
             };
-            const withNewItem = [newItem, ...prev];
-            withNewItem.slice(MAX_HISTORY).forEach(revokeClipboardItemUrls);
-            return withNewItem.slice(0, MAX_HISTORY);
+            return trimHistory([newItem, ...prev]);
           });
         } else if (!message.fileId) {
           // This is a regular text or rich-text message
@@ -292,6 +524,7 @@ const Room: React.FC = () => {
           // File blob URLs are session-local, so only text-like entries survive reloads.
           setHistory(savedHistory.filter(item => (
             (item.status === 'complete' || !item.status)
+            && item.type !== 'collection'
             && !item.fileId
             && !item.content?.startsWith('blob:')
           )));
@@ -328,6 +561,7 @@ const Room: React.FC = () => {
         // Only save completed items to persistent storage
         const historyToSave = history.filter(item => (
           (item.status === 'complete' || !item.status)
+          && item.type !== 'collection'
           && !item.fileId
           && !item.content.startsWith('blob:')
         ));
@@ -347,26 +581,14 @@ const Room: React.FC = () => {
 
   const handleFileSelect = useCallback(async (file: File, uploadToken?: string) => {
     const fileId = createLocalId();
-    const fileType = getClipboardItemType(undefined, file.type);
 
     // Create a placeholder for the sender's UI immediately
-    const initialItem: ClipboardItem = {
-      id: fileId,
-      fileId: fileId,
-      type: fileType,
-      content: '', // Empty initially
-      name: file.name,
-      size: file.size,
-      timestamp: Date.now(),
-      encrypted: true,
-      status: fileType === 'image' ? 'generating' : 'uploading',
-      progress: 0,
-    };
+    const initialItem = createLocalFileItem(file, fileId, Date.now());
     prependHistoryItem(initialItem);
 
     // Generate thumbnail for images
     let previewContent: string | undefined = undefined;
-    if (fileType === 'image') {
+    if (initialItem.type === 'image') {
       try {
         previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
       } catch (error) {
@@ -376,11 +598,7 @@ const Room: React.FC = () => {
 
     // Update the local UI with the thumbnail and the full file blob URL
     const fullFileBlobUrl = URL.createObjectURL(file);
-    setHistory(prev => prev.map(item =>
-      item.id === fileId
-        ? { ...item, previewContent, content: fullFileBlobUrl, status: 'uploading' as const }
-        : item
-    ));
+    setHistory(prev => updateFilePreviewInHistory(prev, fileId, previewContent, fullFileBlobUrl));
 
     // The hook now handles the entire upload sequence
     if (uploadFile) {
@@ -389,6 +607,69 @@ const Room: React.FC = () => {
        showToast('File upload is not available.', 'error');
     }
   }, [uploadFile, showToast, prependHistoryItem]);
+
+  const handleFilesSelect = useCallback(async (files: File[], uploadToken?: string) => {
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      await handleFileSelect(files[0], uploadToken);
+      return;
+    }
+
+    if (!uploadFile) {
+      showToast('File upload is not available.', 'error');
+      return;
+    }
+
+    const collectionId = createLocalId();
+    const collectionTotal = files.length;
+    const timestamp = Date.now();
+    const initialItems = files.map((file, index) => (
+      createLocalFileItem(
+        file,
+        createLocalId(),
+        timestamp + index,
+        collectionId,
+        collectionTotal,
+        index,
+      )
+    ));
+
+    prependHistoryItem(refreshCollectionItem({
+      id: collectionId,
+      collectionId,
+      collectionTotal,
+      type: 'collection',
+      content: '',
+      timestamp,
+      encrypted: true,
+      status: 'uploading',
+      progress: 0,
+      items: initialItems,
+    }));
+
+    await runUploadQueue(files, getCollectionUploadConcurrency(files), async (file, index) => {
+      const item = initialItems[index];
+      if (!item.fileId) return;
+
+      let previewContent: string | undefined = undefined;
+      if (item.type === 'image') {
+        try {
+          previewContent = await createImageThumbnail(file, THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT);
+        } catch (error) {
+          console.warn('Could not create thumbnail for image:', error);
+        }
+      }
+
+      const fullFileBlobUrl = URL.createObjectURL(file);
+      setHistory(prev => updateFilePreviewInHistory(prev, item.fileId!, previewContent, fullFileBlobUrl));
+
+      await uploadFile(file, item.fileId, previewContent, uploadToken, {
+        collectionId,
+        collectionTotal,
+        collectionIndex: index,
+      });
+    });
+  }, [handleFileSelect, uploadFile, showToast, prependHistoryItem]);
 
   const handlePaste = useCallback(async (type: ClipboardItem['type'], content: string) => {
     // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
@@ -478,6 +759,7 @@ const Room: React.FC = () => {
       <ClipboardArea
         onPaste={handlePaste}
         onFileSelect={handleFileSelect}
+        onFilesSelect={handleFilesSelect}
         history={history}
         encryptionEnabled={isE2eeEnabled}
         showToast={showToast}

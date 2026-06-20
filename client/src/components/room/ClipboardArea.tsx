@@ -10,15 +10,26 @@ import MediaViewer from '../common/MediaViewer';
 interface ClipboardAreaProps {
   onPaste?: (type: ClipboardHistoryItem['type'], content: string, name?: string, size?: number) => void;
   onFileSelect: (file: File, uploadToken?: string) => void;
+  onFilesSelect: (files: File[], uploadToken?: string) => void;
   history: ClipboardHistoryItem[];
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
 }
 
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
 const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onPaste,
   onFileSelect,
+  onFilesSelect,
   history,
   encryptionEnabled,
   showToast,
@@ -37,7 +48,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   useEffect(() => {
     const completedItems = history.filter(item =>
       item.status === 'complete' &&
-      item.fileId &&
+      (item.fileId || item.type === 'collection') &&
       !recentlyCompleted.has(item.id)
     );
 
@@ -74,14 +85,14 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     });
   }, []);
 
-  const handleFileSelected = useCallback(async (file: File) => {
+  const verifyLargeFileUpload = useCallback(async (files: File[]): Promise<string | undefined | false> => {
     const passwordPromptSize = 150 * 1024 * 1024; // 150 MB
     let uploadToken: string | undefined;
 
-    if (file.size > passwordPromptSize) {
-      const enteredPassword = prompt(`This file is larger than 150MB. Please enter the password to proceed:`);
+    if (files.some(file => file.size > passwordPromptSize)) {
+      const enteredPassword = prompt(`One or more files are larger than 150MB. Please enter the password to proceed:`);
       if (enteredPassword === null) {
-        return;
+        return false;
       }
       try {
         const response = await fetch('/api/verify-upload-password', {
@@ -92,16 +103,38 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         const data = await response.json();
         if (!data.valid || typeof data.uploadToken !== 'string') {
           showToast('Incorrect password.', 'error');
-          return;
+          return false;
         }
         uploadToken = data.uploadToken;
       } catch {
         showToast('Password verification failed. Please try again.', 'error');
-        return;
+        return false;
       }
     }
+    return uploadToken;
+  }, [showToast]);
+
+  const handleFileSelected = useCallback(async (file: File) => {
+    const uploadToken = await verifyLargeFileUpload([file]);
+    if (uploadToken === false) {
+      return;
+    }
     onFileSelect(file, uploadToken);
-  }, [onFileSelect, showToast]);
+  }, [onFileSelect, verifyLargeFileUpload]);
+
+  const handleFilesSelected = useCallback(async (selectedFiles: File[] | FileList) => {
+    const files = Array.from(selectedFiles);
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      await handleFileSelected(files[0]);
+      return;
+    }
+    const uploadToken = await verifyLargeFileUpload(files);
+    if (uploadToken === false) {
+      return;
+    }
+    onFilesSelect(files, uploadToken);
+  }, [handleFileSelected, onFilesSelect, verifyLargeFileUpload]);
 
   const processClipboardItem = useCallback((item: DataTransferItem) => {
     if (item.kind === 'string' && item.type === 'text/html' && onPaste) {
@@ -127,12 +160,15 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
       e.preventDefault();
 
-      // Prioritize files
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].kind === 'file') {
-          processClipboardItem(items[i]);
-          return;
-        }
+      // Prioritize files and keep multi-file clipboard payloads grouped together.
+      const files = Array.from(items)
+        .filter(item => item.kind === 'file')
+        .map(item => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+
+      if (files.length > 0) {
+        handleFilesSelected(files);
+        return;
       }
 
       // Then prioritize rich text (HTML)
@@ -162,34 +198,84 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
         pasteArea.removeEventListener('paste', handlePaste);
       }
     };
-  }, [processClipboardItem]);
+  }, [processClipboardItem, handleFilesSelected]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      // Process all dropped files
-      for (let i = 0; i < files.length; i++) {
-        handleFileSelected(files[i]);
-      }
+      handleFilesSelected(files);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      // Process all selected files
-      for (let i = 0; i < files.length; i++) {
-        handleFileSelected(files[i]);
-      }
+      handleFilesSelected(files);
       // Reset the input so the same files can be selected again
       e.target.value = '';
     }
   };
 
+  const isTransferActive = (item: ClipboardHistoryItem) => (
+    (item.status === 'uploading' || item.status === 'downloading' || item.status === 'generating')
+    && (item.progress ?? 0) < 100
+  );
+
+  const getCollectionItems = (item: ClipboardHistoryItem) => item.items ?? [];
+
+  const getCollectionLabel = (item: ClipboardHistoryItem) => {
+    const files = getCollectionItems(item);
+    if (item.name) return item.name;
+    const allPhotos = files.length > 0 && files.every(file => file.type === 'image');
+    return `${files.length} ${allPhotos ? 'photos' : 'files'}`;
+  };
+
+  const canOpenInViewer = (item: ClipboardHistoryItem) => (
+    (item.type === 'image' || item.type === 'video')
+    && (!item.status || item.status === 'complete' || item.previewContent)
+    && Boolean(item.content || item.previewContent)
+  );
+
+  const renderCompactFilePreview = (item: ClipboardHistoryItem) => {
+    const content = item.previewContent || item.content;
+    if (item.type === 'image' && content && !loadErrors.has(item.id)) {
+      return (
+        <img
+          src={content}
+          alt={item.name || 'Image'}
+          onError={() => handleMediaError(item.id)}
+        />
+      );
+    }
+
+    if (item.type === 'video' && content && !loadErrors.has(item.id)) {
+      return (
+        <video
+          src={content}
+          muted
+          playsInline
+          onError={() => handleMediaError(item.id)}
+        />
+      );
+    }
+
+    return (
+      <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <path d="M14 2v6h6" />
+      </svg>
+    );
+  };
+
   const handleCopy = async (item: ClipboardHistoryItem) => {
-    if ((item.status === 'uploading' && (item.progress ?? 0) < 100) || (item.status === 'downloading' && (item.progress ?? 0) < 100) || item.status === 'generating') {
+    if (item.type === 'collection') {
+      toggleExpand(item.id);
+      return;
+    }
+
+    if (isTransferActive(item)) {
         showToast('Cannot copy file while it is transferring.', 'info');
         return;
     }
@@ -267,7 +353,26 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   };
 
   const handleDownload = (item: ClipboardHistoryItem) => {
-    if ((item.status === 'uploading' && (item.progress ?? 0) < 100) || (item.status === 'downloading' && (item.progress ?? 0) < 100) || item.status === 'generating') {
+    if (item.type === 'collection') {
+      if (isTransferActive(item)) {
+        showToast('Please wait for the folder transfer to finish.', 'info');
+        return;
+      }
+
+      const downloadableItems = getCollectionItems(item).filter(file => file.content && !isTransferActive(file));
+      if (downloadableItems.length === 0) {
+        showToast('No files are ready to download yet.', 'info');
+        return;
+      }
+
+      downloadableItems.forEach(file => {
+        downloadFile(file.content, file.name || `paste-${file.id}`);
+      });
+      showToast(`Downloading ${downloadableItems.length} files...`, 'success');
+      return;
+    }
+
+    if (isTransferActive(item)) {
         showToast('Cannot download file while it is transferring.', 'info');
         return;
     }
@@ -358,6 +463,131 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     }
   };
 
+  const renderCollectionFolder = (item: ClipboardHistoryItem) => {
+    const files = getCollectionItems(item);
+    const expanded = expandedItems.has(item.id);
+    const visiblePreviewFiles = files.slice(0, 4);
+    const remainingCount = Math.max(files.length - visiblePreviewFiles.length, 0);
+
+    return (
+      <div className="collection-folder">
+        <button
+          type="button"
+          className="collection-folder__summary"
+          onClick={() => toggleExpand(item.id)}
+          aria-expanded={expanded}
+        >
+          <span className="collection-folder__icon">
+            <svg width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+          </span>
+          <span className="collection-folder__details">
+            <strong>{getCollectionLabel(item)}</strong>
+            <span>
+              {files.length} item{files.length === 1 ? '' : 's'}
+              {item.size ? ` • ${formatBytes(item.size)}` : ''}
+              {isTransferActive(item) ? ` • ${Math.round(item.progress ?? 0)}%` : ''}
+            </span>
+          </span>
+          <span className={`collection-folder__chevron ${expanded ? 'collection-folder__chevron--open' : ''}`}>
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+        </button>
+
+        <div className="collection-folder__preview-grid">
+          {visiblePreviewFiles.map(file => (
+            <div key={file.id} className="collection-folder__preview-tile">
+              {renderCompactFilePreview(file)}
+            </div>
+          ))}
+          {remainingCount > 0 && (
+            <div className="collection-folder__preview-tile collection-folder__preview-tile--more">
+              +{remainingCount}
+            </div>
+          )}
+        </div>
+
+        {isTransferActive(item) && (
+          <div className="collection-folder__progress">
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${item.progress || 0}%` }} />
+            </div>
+          </div>
+        )}
+
+        {expanded && (
+          <div className="collection-folder__files">
+            {files.map(file => (
+              <div key={file.id} className="collection-file">
+                <button
+                  type="button"
+                  className={`collection-file__thumb ${canOpenInViewer(file) ? 'collection-file__thumb--clickable' : ''}`}
+                  onClick={() => {
+                    if (canOpenInViewer(file)) {
+                      setViewerItem(file);
+                    }
+                  }}
+                  disabled={!canOpenInViewer(file)}
+                  aria-label={`Open ${file.name || 'file'}`}
+                >
+                  {renderCompactFilePreview(file)}
+                </button>
+
+                <div className="collection-file__info">
+                  <span className="collection-file__name">{file.name || `File ${file.id}`}</span>
+                  <span className="collection-file__meta">
+                    {file.type}
+                    {file.size !== undefined ? ` • ${formatBytes(file.size)}` : ''}
+                    {isTransferActive(file) ? ` • ${Math.round(file.progress ?? 0)}%` : ''}
+                  </span>
+                  {isTransferActive(file) && (
+                    <div className="collection-file__progress">
+                      <div className="progress-track">
+                        <div className="progress-fill" style={{ width: `${file.progress || 0}%` }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="collection-file__actions">
+                  {(file.type === 'image' || file.type === 'video') && (
+                    <button
+                      onClick={() => setViewerItem(file)}
+                      className="clip-btn"
+                      title="Open"
+                      disabled={!canOpenInViewer(file)}
+                    >
+                      Open
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleCopy(file)}
+                    className="clip-btn"
+                    title="Copy"
+                    disabled={isTransferActive(file)}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => handleDownload(file)}
+                    className="clip-btn"
+                    title="Download"
+                    disabled={isTransferActive(file)}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="clipboard-area">
       {/* ── Compose area ── */}
@@ -426,13 +656,18 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
             </div>
           ) : (
             history.map((item) => {
-              const isTransferInProgress = item.status === 'uploading' || item.status === 'downloading';
+              const transferActive = isTransferActive(item);
               const isRecentlyCompleted = recentlyCompleted.has(item.id);
+              const typeLabel = item.type === 'collection'
+                ? 'folder'
+                : item.type === 'rich-text' ? 'rich text' : item.type;
 
               return (
                 <div key={item.id} className={`clip-card ${copiedItemId === item.id ? 'clip-card--flash' : ''}`}>
                   <div className="clip-card__body">
-                    {item.type === 'text' ? (
+                    {item.type === 'collection' ? (
+                      renderCollectionFolder(item)
+                    ) : item.type === 'text' ? (
                       <div className="clip-card__text">
                         {expandedItems.has(item.id) ? item.content : item.content.substring(0, 100)}
                         {item.content.length > 100 && (
@@ -469,7 +704,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                         />
                       </div>
                     )}
-                    {(isTransferInProgress || isRecentlyCompleted) && (
+                    {item.type !== 'collection' && (transferActive || isRecentlyCompleted) && (
                       <div className="clip-card__progress">
                         {item.progress !== 100 && !isRecentlyCompleted && (
                           <div className="progress-track">
@@ -486,22 +721,38 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                   </div>
                   <div className="clip-card__footer">
                     <div className="clip-card__meta">
-                      <span className="clip-card__type">{item.type === 'rich-text' ? 'rich text' : item.type}</span>
+                      <span className="clip-card__type">{typeLabel}</span>
                       <span className="clip-card__time">{new Date(item.timestamp).toLocaleTimeString()}</span>
                     </div>
                     <div className="clip-card__actions">
-                      <button onClick={() => handleCopy(item)} className="clip-btn" title="Copy">
-                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                        </svg>
-                        Copy
-                      </button>
-                      <button onClick={() => handleDownload(item)} className="clip-btn" title="Download" disabled={isTransferInProgress}>
-                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                        </svg>
-                        Save
-                      </button>
+                      {item.type === 'collection' ? (
+                        <>
+                          <button onClick={() => toggleExpand(item.id)} className="clip-btn" title="Open folder">
+                            {expandedItems.has(item.id) ? 'Close' : 'Open'}
+                          </button>
+                          <button onClick={() => handleDownload(item)} className="clip-btn" title="Download all" disabled={transferActive}>
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Save all
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => handleCopy(item)} className="clip-btn" title="Copy">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                              <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                            Copy
+                          </button>
+                          <button onClick={() => handleDownload(item)} className="clip-btn" title="Download" disabled={transferActive}>
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Save
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => onDeleteItem(item.id)} className="clip-btn clip-btn--danger" title="Delete">
                         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
