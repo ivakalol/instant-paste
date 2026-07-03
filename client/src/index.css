@@ -1,57 +1,4 @@
-:root,
-html[data-theme='light'] {
-  color-scheme: light;
-  --page-bg: #f4f7fa;
-  --glow-blue: rgba(87, 142, 255, 0.16);
-  --glow-teal: rgba(46, 196, 176, 0.12);
-  --surface: rgba(255, 255, 255, 0.78);
-  --surface-elevated: #ffffff;
-  --surface-subtle: rgba(235, 241, 247, 0.8);
-  --surface-solid: #ffffff;
-  --border-color: rgba(45, 65, 88, 0.12);
-  --border-strong: rgba(45, 65, 88, 0.2);
-  --text-primary: #101827;
-  --text-secondary: #5c697b;
-  --text-tertiary: #8390a1;
-  --accent-blue: #397ff6;
-  --accent-blue-hover: #2569df;
-  --accent-blue-soft: rgba(57, 127, 246, 0.11);
-  --accent-teal: #1aa892;
-  --accent-teal-soft: rgba(26, 168, 146, 0.11);
-  --input-bg: rgba(242, 246, 250, 0.88);
-  --hover-bg: rgba(35, 74, 112, 0.07);
-  --focus-ring: rgba(57, 127, 246, 0.24);
-  --danger: #d64e5d;
-  --danger-hover: #bb3646;
-  --danger-soft: rgba(214, 78, 93, 0.1);
-  --success: #168b75;
-  --success-soft: rgba(22, 139, 117, 0.11);
-  --warning: #a86c16;
-  --overlay: rgba(8, 14, 24, 0.56);
-  --shadow-sm: 0 1px 2px rgba(16, 24, 39, 0.03), 0 8px 24px rgba(36, 55, 75, 0.05);
-  --shadow-card: 0 18px 52px rgba(29, 47, 67, 0.08);
-  --shadow-lift: 0 22px 60px rgba(29, 47, 67, 0.13);
-  --shadow-dialog: 0 30px 90px rgba(3, 9, 18, 0.28);
-
-  --background-color: var(--page-bg);
-  --card-background: var(--surface);
-  --input-background: var(--input-bg);
-  --input-border: var(--border-strong);
-  --text-color: var(--text-primary);
-  --text-color-secondary: var(--text-secondary);
-  --primary-color: var(--accent-blue);
-  --secondary-color: var(--text-secondary);
-  --button-hover-bg: var(--accent-blue-hover);
-  --button-danger-bg: var(--danger);
-  --button-danger-hover-bg: var(--danger-hover);
-  --toast-success-bg: var(--success);
-  --toast-error-bg: var(--danger);
-  --toast-info-bg: var(--accent-blue);
-  --qr-code-bg: #ffffff;
-  --qr-code-fg: #101827;
-}
-
-html[data-theme='dark'] {
+:root {
   color-scheme: dark;
   --page-bg: #0a0f18;
   --glow-blue: rgba(63, 106, 196, 0.22);
@@ -84,9 +31,24 @@ html[data-theme='dark'] {
   --shadow-card: 0 22px 64px rgba(0, 0, 0, 0.2);
   --shadow-lift: 0 26px 72px rgba(0, 0, 0, 0.3);
   --shadow-dialog: 0 34px 100px rgba(0, 0, 0, 0.52);
-}
 
-:root {
+  --background-color: var(--page-bg);
+  --card-background: var(--surface);
+  --input-background: var(--input-bg);
+  --input-border: var(--border-strong);
+  --text-color: var(--text-primary);
+  --text-color-secondary: var(--text-secondary);
+  --primary-color: var(--accent-blue);
+  --secondary-color: var(--text-secondary);
+  --button-hover-bg: var(--accent-blue-hover);
+  --button-danger-bg: var(--danger);
+  --button-danger-hover-bg: var(--danger-hover);
+  --toast-success-bg: var(--success);
+  --toast-error-bg: var(--danger);
+  --toast-info-bg: var(--accent-blue);
+  --qr-code-bg: #ffffff;
+  --qr-code-fg: #101827;
+
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;

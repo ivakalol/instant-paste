@@ -3,8 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import RoomSelector from './components/room/RoomSelector';
 import Room from './pages/Room';
 import { useWebSocket } from './hooks/useWebSocket';
-import { ThemeProvider } from './context/ThemeContext';
-import ThemeToggle from './components/common/ThemeToggle';
 import NotFound from './pages/NotFound';
 import './App.css';
 
@@ -34,7 +32,6 @@ const AppContent: React.FC = () => {
           </span>
           <span>Instant Paste</span>
         </Link>
-        <ThemeToggle />
       </header>
       <main className="container">
         <Routes>
@@ -66,11 +63,9 @@ const Footer:  React.FC = () => (
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <Router>
-        <AppContent />
-      </Router>
-    </ThemeProvider>
+    <Router>
+      <AppContent />
+    </Router>
   );
 };
 
