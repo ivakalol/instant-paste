@@ -26,6 +26,7 @@ interface UseWebSocketReturn {
   leaveRoom: () => void;
   isE2eeEnabled: boolean;
   isReady: boolean;
+  roomError: string | null;
   encryptFiles: boolean;
   setEncryptFiles: (enabled: boolean) => void;
 }
@@ -62,6 +63,7 @@ export const useWebSocket = (
   const [roomClients, setRoomClients] = useState<Record<string, RoomClient>>({});
   const [isE2eeEnabled, setIsE2eeEnabled] = useState(window.isSecureContext);
   const [isReady, setIsReady] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
   const [encryptFiles, setEncryptFiles] = useState(false);
 
   const receiverState = useRef(createFileReceiverState());
@@ -152,6 +154,7 @@ export const useWebSocket = (
             clientCount: message.clientCount || 0,
             clientId: message.clientId || roomState.clientId,
           });
+          setRoomError(null);
           setRoomClients(clients.reduce((acc: any, c: any) => {
             acc[c.id] = c;
             return acc;
@@ -272,6 +275,9 @@ export const useWebSocket = (
 
         case 'error':
           console.error('WebSocket error:', message.message);
+          if (!message.fileId) {
+            setRoomError(message.message || 'The room could not be opened.');
+          }
           if (pendingRoomJoin.current) {
             pendingRoomJoin.current(false);
             pendingRoomJoin.current = undefined;
@@ -424,6 +430,7 @@ export const useWebSocket = (
 
   const createRoom = useCallback((): Promise<string | null> => {
     return new Promise((resolve) => {
+      setRoomError(null);
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
         resolve(null);
         return;
@@ -437,6 +444,7 @@ export const useWebSocket = (
 
   const joinRoom = useCallback((roomId: string): Promise<boolean> => {
     return new Promise((resolve) => {
+      setRoomError(null);
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
         resolve(false);
         return;
@@ -458,6 +466,6 @@ export const useWebSocket = (
 
   return {
     roomState, sendMessage, uploadFile, createRoom, joinRoom, leaveRoom,
-    isE2eeEnabled, isReady, encryptFiles, setEncryptFiles,
+    isE2eeEnabled, isReady, roomError, encryptFiles, setEncryptFiles,
   };
 };

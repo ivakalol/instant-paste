@@ -3,6 +3,7 @@ import './RoomInfo.css';
 import { RoomState } from '../../types';
 import { copyToClipboard } from '../../utils/clipboard';
 import QRCodeModal from './QRCodeModal';
+import Dialog from '../common/Dialog';
 
 interface RoomInfoProps {
   roomState: RoomState;
@@ -28,6 +29,7 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
   onClearAll
 }) => {
   const [showQrCode, setShowQrCode] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<'encrypt' | 'clear' | null>(null);
 
   const copyRoomId = () => {
     if (roomState.roomId) {
@@ -57,8 +59,12 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
               <span className="room-id">{roomState.roomId}</span>
             </h2>
             <p className="client-count">
-              <span className={`connection-dot ${roomState.connected ? 'connected' : 'disconnected'}`} />
-              {roomState.clientCount} {roomState.clientCount === 1 ? 'device' : 'devices'}
+              <span className={`connection-dot ${roomState.connected ? 'connected' : 'disconnected'}`} aria-hidden="true" />
+              <span role="status">
+                {roomState.connected
+                  ? `Connected · ${roomState.clientCount} ${roomState.clientCount === 1 ? 'device' : 'devices'}`
+                  : 'Reconnecting…'}
+              </span>
             </p>
           </div>
 
@@ -105,12 +111,10 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
               disabled={!encryptionEnabled}
               onChange={() => {
                 if (!encryptFilesEnabled) {
-                  const confirmed = window.confirm(
-                    '⚠️ Warning: Encrypting files will significantly slow down uploads and downloads.\n\nEnable file encryption?'
-                  );
-                  if (!confirmed) return;
+                  setActiveDialog('encrypt');
+                  return;
                 }
-                onToggleEncryptFiles(!encryptFilesEnabled);
+                onToggleEncryptFiles(false);
               }}
             />
             <span className="toggle-pill__track">
@@ -133,7 +137,7 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           </label>
 
           {/* Clear All — pushed to the end */}
-          <button onClick={onClearAll} className="action-text action-text--danger" title="Delete all clips from history">
+          <button onClick={() => setActiveDialog('clear')} className="action-text action-text--danger" title="Delete all clips from history">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
             </svg>
@@ -149,6 +153,54 @@ const RoomInfo: React.FC<RoomInfoProps> = ({
           onClose={() => setShowQrCode(false)}
         />
       )}
+
+      <Dialog
+        isOpen={activeDialog === 'encrypt'}
+        onClose={() => setActiveDialog(null)}
+        eyebrow="File security"
+        title="Encrypt file transfers?"
+        footer={(
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setActiveDialog(null)}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                onToggleEncryptFiles(true);
+                setActiveDialog(null);
+              }}
+            >
+              Enable encryption
+            </button>
+          </>
+        )}
+      >
+        <p>End-to-end encryption adds extra processing and can make large uploads and downloads noticeably slower.</p>
+      </Dialog>
+
+      <Dialog
+        isOpen={activeDialog === 'clear'}
+        onClose={() => setActiveDialog(null)}
+        eyebrow="Clear history"
+        title="Delete every clip?"
+        footer={(
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setActiveDialog(null)}>Keep clips</button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                onClearAll();
+                setActiveDialog(null);
+              }}
+            >
+              Delete all clips
+            </button>
+          </>
+        )}
+      >
+        <p>This removes the clipboard history stored for this room on this device. This action cannot be undone.</p>
+      </Dialog>
     </>
   );
 };

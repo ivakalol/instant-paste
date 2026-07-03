@@ -69,7 +69,13 @@ const MediaViewer: React.FC<MediaViewerProps> = ({ item, onClose, showToast }) =
   };
 
   return (
-    <div className="media-viewer-overlay" onClick={onClose}>
+    <div
+      className="media-viewer-overlay"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={item.name ? `Preview ${item.name}` : 'Media preview'}
+    >
       <button className="media-viewer-close" onClick={onClose} aria-label="Close">
         <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

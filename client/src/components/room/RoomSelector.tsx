@@ -12,6 +12,7 @@ interface RoomSelectorProps {
 const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, isReady }) => {
   const [roomId, setRoomId] = useState('');
   const [recentRooms, setRecentRooms] = useState<string[]>([]);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -19,10 +20,13 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
   }, []);
 
   const handleCreate = async () => {
+    setFormMessage(null);
     const newRoomId = await onCreateRoom();
     if (newRoomId) {
       addRecentRoom(newRoomId);
       navigate(`/${newRoomId}`);
+    } else {
+      setFormMessage('Could not create a room. Check your connection and try again.');
     }
   };
 
@@ -30,10 +34,13 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
     e.preventDefault();
     const roomToJoin = roomId.trim().toUpperCase();
     if (!roomToJoin) return;
+    setFormMessage(null);
     const success = await onJoinRoom(roomToJoin);
     if (success) {
       addRecentRoom(roomToJoin);
       navigate(`/${roomToJoin}`);
+    } else {
+      setFormMessage('That room is unavailable. Check the ID or create a new room.');
     }
   };
 
@@ -44,9 +51,16 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
 
   return (
     <div className="room-page">
-      <div className="hero">
-        <div className="hero-badge">No login · Free · Open Source</div>
-        <h1>Instant Paste</h1>
+      <section className="hero" aria-labelledby="hero-title">
+        <div className="hero-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+            <path d="M9 13h6M12 10v6" />
+          </svg>
+        </div>
+        <div className="hero-badge"><span aria-hidden="true" /> No login · Free · Open source</div>
+        <h1 id="hero-title">Your clipboard,<br /><span>anywhere.</span></h1>
         <p className="hero-subtitle">
           Copy on one device, paste on another. Real-time clipboard sync across any browser and OS.
         </p>
@@ -54,12 +68,15 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           <button onClick={handleCreate} className="btn btn-primary btn-lg" disabled={!isReady}>
             {isReady ? 'Create a Room' : 'Initializing…'}
           </button>
-          <form onSubmit={handleJoin} className="join-form hero-join">
+          <form onSubmit={handleJoin} className="join-form hero-join" aria-label="Join an existing room">
             <input
               type="text"
               placeholder="Enter room ID"
               value={roomId}
-              onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setRoomId(e.target.value.toUpperCase());
+                setFormMessage(null);
+              }}
               maxLength={6}
               className="room-input"
               aria-label="Enter room ID"
@@ -69,17 +86,21 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
             </button>
           </form>
         </div>
+        {formMessage && <p className="hero-message" role="alert">{formMessage}</p>}
         <div className="hero-footnotes">
           <span>Works on all modern browsers</span>
           <span>Text E2E encrypted (AES-GCM)</span>
           <span>HTTPS protected file transfers</span>
         </div>
-      </div>
+      </section>
 
       {recentRooms.length > 0 && (
-        <div className="card recent-rooms">
+        <section className="card recent-rooms" aria-labelledby="recent-rooms-title">
           <div className="card-header">
-            <h3>Jump back in</h3>
+            <div>
+              <span className="eyebrow">Your rooms</span>
+              <h2 id="recent-rooms-title">Jump back in</h2>
+            </div>
             <span className="pill">Recent</span>
           </div>
           <div className="recent-rooms-list">
@@ -93,12 +114,13 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               </button>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="card how-it-works">
+      <section className="card how-it-works" aria-labelledby="how-it-works-title">
         <div className="section-title">
-          <h3>How it works</h3>
+          <span className="eyebrow">Simple by design</span>
+          <h2 id="how-it-works-title">How it works</h2>
           <p>Three quick steps to share anything instantly.</p>
         </div>
         <div className="steps-grid">
@@ -118,49 +140,45 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
             <p>Your clipboard is mirrored instantly to every connected device.</p>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="card features">
+      <section className="card features" aria-labelledby="features-title">
         <div className="section-title">
-          <h3>Why people use Instant Paste</h3>
+          <span className="eyebrow">Built for the everyday handoff</span>
+          <h2 id="features-title">Why people use Instant Paste</h2>
           <p>Fast, private, and frictionless across platforms.</p>
         </div>
         <div className="features-grid">
           <div className="feature-item">
-            <div className="feature-icon">⚡</div>
+            <div className="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z" /></svg>
+            </div>
             <h4>Zero setup</h4>
             <p>Runs in the browser—no installs, no accounts, just a room ID.</p>
           </div>
           <div className="feature-item">
-            <div className="feature-icon">🔒</div>
+            <div className="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>
+            </div>
             <h4>Private by design</h4>
-            <p>All Data is end-to-end encrypted using AES-256-GCM with ECDH key exchange — only devices in the room can decrypt</p>
+            <p>Data is end-to-end encrypted with AES-256-GCM and ECDH key exchange—only devices in the room can decrypt it.</p>
           </div>
           <div className="feature-item">
-            <div className="feature-icon">🌐</div>
+            <div className="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
+            </div>
             <h4>Cross-platform</h4>
             <p>iOS, Android, macOS, Windows, Linux—if it has a browser, it works.</p>
           </div>
           <div className="feature-item">
-            <div className="feature-icon">📎</div>
+            <div className="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m20.5 11.5-8.9 8.9a6 6 0 0 1-8.5-8.5l9.6-9.6a4 4 0 0 1 5.7 5.7l-9.7 9.6a2 2 0 0 1-2.8-2.8l8.9-8.9" /></svg>
+            </div>
             <h4>Handles rich content</h4>
             <p>Text, images, and videos; drag-and-drop or paste directly.</p>
           </div>
         </div>
-      </div>
-
-      <div className="card about">
-        <div className="section-title">
-          <h3>The easiest way to sync your clipboard</h3>
-          <p>No-login universal clipboard. Free, open source, and built for speed.</p>
-        </div>
-        <div className="seo-keywords">
-          <span>✅ No app install</span>
-          <span>✅ Works on all browsers</span>
-          <span>✅ 100% free</span>
-          <span>✅ Open source</span>
-        </div>
-      </div>
+      </section>
     </div>
   );
 };

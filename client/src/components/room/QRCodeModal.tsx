@@ -1,5 +1,6 @@
 import React from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import Dialog from '../common/Dialog';
 import './QRCodeModal.css';
 
 interface QRCodeModalProps {
@@ -9,21 +10,20 @@ interface QRCodeModalProps {
 }
 
 const QRCodeModal: React.FC<QRCodeModalProps> = ({ isOpen, onClose, url }) => {
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close-button" onClick={onClose}>&times;</button>
-        <h2>Scan to Join Room</h2>
-        <div className="qrcode-container">
-          <QRCodeCanvas value={url} size={256} />
-        </div>
-        <p className="modal-url">{url}</p>
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      eyebrow="Share this room"
+      title="Scan to join"
+      className="qr-dialog"
+    >
+      <p className="qr-dialog__intro">Open the camera on another device and scan this code to join instantly.</p>
+      <div className="qrcode-container">
+        <QRCodeCanvas value={url} size={240} bgColor="#ffffff" fgColor="#101827" />
       </div>
-    </div>
+      <p className="modal-url">{url}</p>
+    </Dialog>
   );
 };
 
