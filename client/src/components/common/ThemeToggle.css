@@ -29,3 +29,20 @@
 .theme-toggle-btn:active {
   transform: scale(0.95);
 }
+
+.theme-toggle-btn {
+  position: static;
+  width: 2.65rem;
+  height: 2.65rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: color var(--transition), background-color var(--transition), border-color var(--transition), transform var(--transition-fast);
+}
+
+.theme-toggle-btn svg { width: 1.2rem; height: 1.2rem; }
+.theme-toggle-btn:hover { color: var(--text-primary); background: var(--surface-elevated); border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.theme-toggle-btn:active { transform: scale(0.96); }

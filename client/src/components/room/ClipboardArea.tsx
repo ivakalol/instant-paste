@@ -6,12 +6,14 @@ import { copyToClipboard, downloadFile } from '../../utils/clipboard';
 import { convertBlobToPng } from '../../utils/image';
 import FilePreview from './FilePreview';
 import MediaViewer from '../common/MediaViewer';
+import Dialog from '../common/Dialog';
 
 interface ClipboardAreaProps {
   onPaste?: (type: ClipboardHistoryItem['type'], content: string, name?: string, size?: number) => void;
   onFileSelect: (file: File, uploadToken?: string) => void;
   onFilesSelect: (files: File[], uploadToken?: string) => void;
   history: ClipboardHistoryItem[];
+  historyLoading?: boolean;
   encryptionEnabled: boolean;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onDeleteItem: (id: string) => void;
@@ -31,6 +33,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   onFileSelect,
   onFilesSelect,
   history,
+  historyLoading = false,
   encryptionEnabled,
   showToast,
   onDeleteItem
@@ -44,6 +47,30 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const [loadErrors, setLoadErrors] = useState<Set<string>>(new Set());
   const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
   const [viewerItem, setViewerItem] = useState<ClipboardHistoryItem | null>(null);
+  const [passwordRequest, setPasswordRequest] = useState<{
+    resolve: (password: string | null) => void;
+  } | null>(null);
+  const [largeFilePassword, setLargeFilePassword] = useState('');
+
+  const requestLargeFilePassword = useCallback((): Promise<string | null> => (
+    new Promise(resolve => {
+      setLargeFilePassword('');
+      setPasswordRequest({ resolve });
+    })
+  ), []);
+
+  const closePasswordDialog = useCallback(() => {
+    passwordRequest?.resolve(null);
+    setPasswordRequest(null);
+    setLargeFilePassword('');
+  }, [passwordRequest]);
+
+  const submitPasswordDialog = useCallback(() => {
+    if (!largeFilePassword.trim()) return;
+    passwordRequest?.resolve(largeFilePassword);
+    setPasswordRequest(null);
+    setLargeFilePassword('');
+  }, [largeFilePassword, passwordRequest]);
 
   useEffect(() => {
     const completedItems = history.filter(item =>
@@ -90,7 +117,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     let uploadToken: string | undefined;
 
     if (files.some(file => file.size > passwordPromptSize)) {
-      const enteredPassword = prompt(`One or more files are larger than 150MB. Please enter the password to proceed:`);
+      const enteredPassword = await requestLargeFilePassword();
       if (enteredPassword === null) {
         return false;
       }
@@ -112,7 +139,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
       }
     }
     return uploadToken;
-  }, [showToast]);
+  }, [requestLargeFilePassword, showToast]);
 
   const handleFileSelected = useCallback(async (file: File) => {
     const uploadToken = await verifyLargeFileUpload([file]);
@@ -592,6 +619,17 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     <div className="clipboard-area">
       {/* ── Compose area ── */}
       <div className="compose">
+        <div className="compose__heading">
+          <div>
+            <span className="eyebrow">New clip</span>
+            <h2>Share something</h2>
+          </div>
+          <span className={`compose__security ${encryptionEnabled ? 'compose__security--on' : ''}`}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="10" width="16" height="11" rx="3" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+            {encryptionEnabled ? 'Encrypted' : 'Standard connection'}
+          </span>
+        </div>
+        <div className={`compose__field ${isDragging ? 'compose__field--drag' : ''}`}>
         <textarea
           ref={pasteAreaRef}
           className={`compose__input ${isDragging ? 'compose__input--drag' : ''}`}
@@ -603,17 +641,24 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           rows={4}
+          aria-label="Text to share"
         />
+        {isDragging && (
+          <div className="compose__drop-message" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></svg>
+            Drop files to share
+          </div>
+        )}
         <div className="compose__bar">
-          <button onClick={() => fileInputRef.current?.click()} className="compose__attach" title="Attach files">
+          <button type="button" onClick={() => fileInputRef.current?.click()} className="compose__attach" title="Attach files">
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
             Attach
           </button>
-          <input ref={fileInputRef} type="file" multiple onChange={handleFileChange} style={{ display: 'none' }} />
+          <input ref={fileInputRef} type="file" multiple onChange={handleFileChange} className="visually-hidden" aria-label="Choose files to share" />
 
-          <button onClick={handlePasteButtonClick} className="compose__paste" title="Paste from clipboard">
+          <button type="button" onClick={handlePasteButtonClick} className="compose__paste" title="Paste from clipboard">
             <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
@@ -624,12 +669,13 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
 
           <span className="compose__hint">Ctrl+Enter to send</span>
 
-          <button onClick={handleSendText} className="compose__send" disabled={!typedText.trim()} title="Send text">
+          <button type="button" onClick={handleSendText} className="compose__send" disabled={!typedText.trim()} title="Send text">
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
               <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
             </svg>
             Send
           </button>
+        </div>
         </div>
       </div>
 
@@ -645,8 +691,13 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           </h3>
         </div>
 
-        <div className="clips__list">
-          {history.length === 0 ? (
+        <div className="clips__list" aria-live="polite">
+          {historyLoading ? (
+            <div className="clips__loading" role="status">
+              <span className="spinner" aria-hidden="true" />
+              <span>Loading saved clips…</span>
+            </div>
+          ) : history.length === 0 ? (
             <div className="clips__empty">
               <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -753,7 +804,7 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
                           </button>
                         </>
                       )}
-                      <button onClick={() => onDeleteItem(item.id)} className="clip-btn clip-btn--danger" title="Delete">
+                      <button onClick={() => onDeleteItem(item.id)} className="clip-btn clip-btn--danger" title="Delete" aria-label="Delete clip">
                         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
                         </svg>
@@ -774,6 +825,34 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           showToast={showToast}
         />
       )}
+
+      <Dialog
+        isOpen={Boolean(passwordRequest)}
+        onClose={closePasswordDialog}
+        eyebrow="Large file upload"
+        title="Password required"
+        footer={(
+          <>
+            <button type="button" className="btn btn-secondary" onClick={closePasswordDialog}>Cancel upload</button>
+            <button type="button" className="btn btn-primary" onClick={submitPasswordDialog} disabled={!largeFilePassword.trim()}>Continue</button>
+          </>
+        )}
+      >
+        <p>One or more files are larger than 150 MB. Enter the upload password to continue.</p>
+        <label className="field-label" htmlFor="large-file-password">Upload password</label>
+        <input
+          id="large-file-password"
+          className="text-input"
+          type="password"
+          value={largeFilePassword}
+          onChange={(event) => setLargeFilePassword(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') submitPasswordDialog();
+          }}
+          autoComplete="current-password"
+          autoFocus
+        />
+      </Dialog>
     </div>
   );
 };

@@ -43,3 +43,20 @@
   font-size: 0.9rem;
   margin-top: 15px;
 }
+
+.qr-dialog { width: min(100%, 27rem); text-align: center; }
+.qr-dialog .dialog__header { padding: 0 2.5rem; }
+.qr-dialog__intro { max-width: 22rem; margin: 0 auto; }
+.qrcode-container {
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.5rem auto 1rem;
+  padding: 0.8rem;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.qrcode-container canvas { display: block; width: min(15rem, 100%); height: auto !important; }
+.modal-url { margin: 0; padding: 0.7rem 0.85rem; overflow-wrap: anywhere; border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--input-bg); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.7rem; }

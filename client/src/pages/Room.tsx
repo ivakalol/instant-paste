@@ -509,7 +509,7 @@ const Room: React.FC = () => {
     }
   }, [autoCopyEnabled, showToast, copyTextToClipboard, prependHistoryItem]);
 
-  const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled, encryptFiles, setEncryptFiles } = useWebSocket(
+  const { roomState, sendMessage, uploadFile, leaveRoom, isE2eeEnabled, roomError, encryptFiles, setEncryptFiles } = useWebSocket(
     handleClipboardReceived,
     handleFileTransferUpdate,
     roomId
@@ -743,6 +743,24 @@ const Room: React.FC = () => {
     }
   }, [roomId, showToast]);
 
+  if (roomError && !roomState.roomId) {
+    return (
+      <section className="not-found room-error" aria-labelledby="room-error-title">
+        <div className="not-found__icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+            <path d="M9 13h6" />
+          </svg>
+        </div>
+        <span className="eyebrow">Room unavailable</span>
+        <h1 id="room-error-title">Couldn’t join this room.</h1>
+        <p>{roomError}</p>
+        <button type="button" className="btn btn-primary" onClick={() => navigate('/')}>Back to home</button>
+      </section>
+    );
+  }
+
   return (
     <>
       <RoomInfo
@@ -761,6 +779,7 @@ const Room: React.FC = () => {
         onFileSelect={handleFileSelect}
         onFilesSelect={handleFilesSelect}
         history={history}
+        historyLoading={!isHistoryLoaded}
         encryptionEnabled={isE2eeEnabled}
         showToast={showToast}
         onDeleteItem={handleDeleteItem}
@@ -777,4 +796,3 @@ const Room: React.FC = () => {
 };
 
 export default Room;
-

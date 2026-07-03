@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode } from 'react';
 
 interface ThemeContextType {
   isDarkMode: boolean;
@@ -22,39 +22,39 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const savedTheme = localStorage.getItem('theme');
-    // Also respect system preference as fallback
-    if (savedTheme === null) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return savedTheme === 'dark';
+    return savedTheme
+      ? savedTheme === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.body.classList.add('dark-mode');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.body.classList.remove('dark-mode');
-      localStorage.setItem('theme', 'light');
-    }
+  useLayoutEffect(() => {
+    const theme = isDarkMode ? 'dark' : 'light';
+    document.documentElement.dataset.theme = theme;
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      'content',
+      isDarkMode ? '#0a0f18' : '#f4f7fa',
+    );
   }, [isDarkMode]);
 
   useEffect(() => {
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-  
-  const handleChange = (e: MediaQueryListEvent) => {
-    // Only auto-switch if user hasn't manually set a preference
-    if (localStorage.getItem('theme') === null) {
-      setIsDarkMode(e.matches);
-    }
-  };
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (localStorage.getItem('theme') === null) {
+        setIsDarkMode(e.matches);
+      }
+    };
 
-  mediaQuery.addEventListener('change', handleChange);
-  return () => mediaQuery.removeEventListener('change', handleChange);
-}, []);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   const toggleTheme = () => {
-    setIsDarkMode(prevMode => !prevMode);
+    setIsDarkMode(prevMode => {
+      const nextMode = !prevMode;
+      localStorage.setItem('theme', nextMode ? 'dark' : 'light');
+      return nextMode;
+    });
   };
 
   return (
