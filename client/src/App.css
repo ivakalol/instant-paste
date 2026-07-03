@@ -60,38 +60,48 @@ body {
   position: relative;
   z-index: 100;
   width: min(100% - 2rem, 70rem);
-  min-height: 5.25rem;
+  min-height: 6.5rem;
   margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 1rem;
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.9rem;
+  margin-left: -0.8rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  font-size: 0.94rem;
-  font-weight: 750;
+  font-size: 1.15rem;
+  font-weight: 780;
   letter-spacing: -0.02em;
   text-decoration: none;
+  transition: color var(--transition), background-color var(--transition), transform var(--transition-fast);
+}
+
+.brand:hover {
+  color: var(--accent-blue);
+  background: var(--hover-bg);
+  transform: translateY(-1px);
 }
 
 .brand-mark {
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 3rem;
+  height: 3rem;
   display: grid;
   place-items: center;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 15px;
   color: var(--accent-teal);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
 
-.brand-mark svg { width: 1.18rem; height: 1.18rem; }
+.brand-mark svg { width: 1.45rem; height: 1.45rem; }
 
 .container {
   width: min(100% - 2rem, 64rem);
@@ -142,8 +152,9 @@ body {
 .not-found p { max-width: 28rem; margin: 1.15rem 0 1.75rem; color: var(--text-secondary); line-height: 1.7; }
 
 @media (max-width: 600px) {
-  .site-header { width: min(100% - 1.5rem, 70rem); min-height: 4.5rem; }
+  .site-header { width: min(100% - 1.5rem, 70rem); min-height: 5.5rem; }
   .container { width: min(100% - 1.25rem, 64rem); padding: 0.75rem 0 2rem; }
-  .brand-mark { width: 2.2rem; height: 2.2rem; }
+  .brand { margin-left: -0.45rem; padding: 0.45rem; font-size: 1.02rem; }
+  .brand-mark { width: 2.65rem; height: 2.65rem; }
   .not-found { min-height: 25rem; margin-top: 1.5rem; }
 }

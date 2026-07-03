@@ -1,28 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="https://ivaka-website.me/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f4f7fa" />
-    <script>
-      (function () {
-        try {
-          var savedTheme = localStorage.getItem('theme');
-          var isDark = savedTheme
-            ? savedTheme === 'dark'
-            : window.matchMedia('(prefers-color-scheme: dark)').matches;
-          document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
-          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
-          document.querySelector('meta[name="theme-color"]').setAttribute(
-            'content',
-            isDark ? '#0a0f18' : '#f4f7fa'
-          );
-        } catch (error) {
-          document.documentElement.dataset.theme = 'light';
-        }
-      }());
-    </script>
+    <meta name="theme-color" content="#0a0f18" />
     <meta
       name="description"
       content="Instantly sync clipboard text, images, and files between devices (Windows, Mac, Android, iOS). Free online tool, no login required, end-to-end encrypted."
