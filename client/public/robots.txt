@@ -1,3 +1,4 @@
 User-agent: *
 Allow: /
-Sitemap: https://ivaka-website.me/sitemap.xml
+
+Sitemap: https://paste.ivaylo.tech/sitemap.xml
