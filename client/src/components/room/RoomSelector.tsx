@@ -71,7 +71,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           <form onSubmit={handleJoin} className="join-form hero-join" aria-label="Join an existing room">
             <input
               type="text"
-              placeholder="Enter room ID"
+              placeholder="Enter/Create room ID"
               value={roomId}
               onChange={(e) => {
                 setRoomId(e.target.value.toUpperCase());
