@@ -79,7 +79,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
               }}
               maxLength={6}
               className="room-input"
-              aria-label="Enter room ID"
+              aria-label="Enter or create room ID"
             />
             <button type="submit" className="btn btn-ghost" disabled={!roomId.trim() || !isReady}>
               Join

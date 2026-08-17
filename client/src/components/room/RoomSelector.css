@@ -89,7 +89,7 @@
   border: none;
   background: transparent;
   padding: 0.5rem 1rem;
-  width: 140px;
+  width: 240px;
   font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -451,7 +451,7 @@
 
 .hero-join:hover { border-color: color-mix(in srgb, var(--accent-blue) 38%, var(--border-strong)); box-shadow: none; }
 .hero-join:focus-within { border-color: var(--accent-blue); box-shadow: 0 0 0 3px var(--focus-ring); }
-.hero-join .room-input { width: 9.5rem; padding: 0.55rem 0.8rem; color: var(--text-primary); font-size: 0.86rem; letter-spacing: 0.08em; }
+.hero-join .room-input { width: 15rem; padding: 0.55rem 0.8rem; color: var(--text-primary); font-size: 0.86rem; letter-spacing: 0.08em; }
 .hero-join .room-input::placeholder { color: var(--text-tertiary); opacity: 1; letter-spacing: 0.03em; }
 .hero-join .btn-ghost { min-height: 2.55rem; padding: 0.55rem 0.9rem; border-radius: 10px; color: var(--accent-blue); }
 .hero-join .btn-ghost:hover:not(:disabled) { background: var(--accent-blue-soft); }
