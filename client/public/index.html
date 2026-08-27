@@ -16,18 +16,7 @@
     />
     <!-- Тук ползваме относителни пътища само с / -->
     <link rel="apple-touch-icon" href="/logo192.png" />
-    
-    <script>
-      (function () {
-      const path = window.location.pathname || '/';
-
-      const manifestLink = document.createElement('link');
-      manifestLink.rel = 'manifest';
-      manifestLink.href = '/manifest.json?path=' + encodeURIComponent(path);
-
-      document.head.appendChild(manifestLink);
-    })();
-    </script>
+    <link rel="manifest" href="/manifest.json" />
     
     <!-- SEO & Social Media Meta Tags - задължително с новия пълен домейн -->
     <meta property="og:title" content="Instant Paste | Sync Clipboard Between Devices & Share Files" />
