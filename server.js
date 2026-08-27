@@ -196,6 +196,79 @@ const isOriginAllowed = (origin) => {
 };
 
 app.disable('x-powered-by');
+
+// =============================================================================
+// DYNAMIC PWA MANIFEST
+// =============================================================================
+
+app.get('/manifest.json', (req, res) => {
+  let requestedPath = req.query.path;
+
+  if (typeof requestedPath !== 'string' || !requestedPath.startsWith('/')) {
+    requestedPath = '/';
+  }
+
+  // Normalize path
+  requestedPath = requestedPath
+    .split('?')[0]
+    .split('#')[0];
+
+  if (requestedPath.length > 1) {
+    requestedPath = requestedPath.replace(/\/+$/, '');
+  }
+
+  const isRoot = requestedPath === '/';
+
+  const appName = isRoot
+    ? 'InstantPaste'
+    : `InstantPaste - ${requestedPath.slice(1)}`;
+
+  const shortName = isRoot
+    ? 'InstantPaste'
+    : requestedPath.slice(1).slice(0, 30);
+
+  const scope = isRoot
+    ? '/'
+    : `${requestedPath}/`;
+
+  const manifest = {
+    id: requestedPath,
+    name: appName,
+    short_name: shortName,
+
+    icons: [
+      {
+        src: '/favicon.ico',
+        sizes: '64x64 32x32 24x24 16x16',
+        type: 'image/x-icon'
+      },
+      {
+        src: '/logo192.png',
+        type: 'image/png',
+        sizes: '192x192'
+      },
+      {
+        src: '/logo512.png',
+        type: 'image/png',
+        sizes: '512x512'
+      }
+    ],
+
+    start_url: requestedPath,
+    scope,
+
+    display: 'standalone',
+    theme_color: '#0a0f18',
+    background_color: '#ffffff',
+
+    description:
+      'Instantly sync clipboard text, images, and files between devices.'
+  };
+
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(manifest);
+});
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
