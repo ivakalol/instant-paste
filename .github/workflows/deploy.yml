@@ -9,6 +9,7 @@ permissions:
   contents: write
 
 jobs:
+  # Задача 1: Изпълнява се в облака на GitHub
   build-and-deploy:
     runs-on: ubuntu-latest
 
@@ -33,11 +34,9 @@ jobs:
       - name: Подготовка на деплой пакета
         run: |
           mkdir -p release/client
-          # Копиране на бекенд файловете от корена
           cp server.js release/
           cp package.json release/
           cp package-lock.json release/ 2>/dev/null || true
-          # Копиране на компилирания React фронтенд на точния път
           cp -r client/build release/client/build
 
       - name: Публикуване в deploy бранч
@@ -45,3 +44,11 @@ jobs:
         with:
           folder: release
           branch: deploy
+
+  # Задача 2: Изпълнява се директно на твоя Raspberry Pi
+  deploy-to-pi:
+    needs: build-and-deploy # Изчаква Задача 1 да качи новия билд в 'deploy'
+    runs-on: self-hosted    # Казва на GitHub: "Изпрати тази задача на моя Raspberry Pi"
+    steps:
+      - name: Изпълнение на скрипта за обновяване
+        run: bash /home/ivko/update-app.sh
