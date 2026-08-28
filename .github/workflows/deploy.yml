@@ -11,9 +11,6 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client # Задава изпълнението на командите в папка client
 
     steps:
       - name: Checkout кода
@@ -26,14 +23,25 @@ jobs:
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
 
-      - name: Инсталиране на зависимости
-        run: npm ci
+      - name: Инсталиране на зависимости и Build на React
+        run: |
+          cd client
+          npm ci
+          npm run build
+          cd ..
 
-      - name: Build на React проекта
-        run: npm run build --silent
+      - name: Подготовка на деплой пакета
+        run: |
+          mkdir -p release/client
+          # Копиране на бекенд файловете от корена
+          cp server.js release/
+          cp package.json release/
+          cp package-lock.json release/ 2>/dev/null || true
+          # Копиране на компилирания React фронтенд на точния път
+          cp -r client/build release/client/build
 
-      - name: Публикуване на билда в deploy бранч
+      - name: Публикуване в deploy бранч
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: client/build # Пътят до компилираните файлове
+          folder: release
           branch: deploy
