@@ -18,17 +18,17 @@ jobs:
       - name: Настройка на Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Инсталиране на зависимости
         run: npm ci
 
       - name: Build на React проекта
-        run: npm run build
+        run: npm run build -- silent
 
       - name: Публикуване на билда в deploy бранч
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: build # Сложи 'dist', ако проектът ползва Vite
-          branch: deploy # Бранчът, в който ще отидат компилираните файлове
+          folder: dist # Променено от build на dist
+          branch: deploy
