@@ -11,6 +11,10 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client # Задава изпълнението на командите в папка client
+
     steps:
       - name: Checkout кода
         uses: actions/checkout@v4
@@ -20,15 +24,16 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+          cache-dependency-path: client/package-lock.json
 
       - name: Инсталиране на зависимости
         run: npm ci
 
       - name: Build на React проекта
-        run: npm run build -- silent
+        run: npm run build --silent
 
       - name: Публикуване на билда в deploy бранч
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: dist # Променено от build на dist
+          folder: client/build # Пътят до компилираните файлове
           branch: deploy
