@@ -60,7 +60,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onCreateRoom, onJoinRoom, i
           </svg>
         </div>
         <div className="hero-badge"><span aria-hidden="true" /> No login · Free · Open source</div>
-        <h1 id="hero-title">Your clipboard,<br /><span>anywhere.</span></h1>
+        <h1 id="hero-title">Your clipboard1,<br /><span>anywhere.</span></h1>
         <p className="hero-subtitle">
           Copy on one device, paste on another. Real-time clipboard sync across any browser and OS.
         </p>
