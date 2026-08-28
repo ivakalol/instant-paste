@@ -1,0 +1,34 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout кода
+        uses: actions/checkout@v4
+
+      - name: Настройка на Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Инсталиране на зависимости
+        run: npm ci
+
+      - name: Build на React проекта
+        run: npm run build
+
+      - name: Публикуване на билда в deploy бранч
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build # Сложи 'dist', ако проектът ползва Vite
+          branch: deploy # Бранчът, в който ще отидат компилираните файлове
