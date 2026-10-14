@@ -65,10 +65,19 @@ export const decryptMetadata = async (
   if (!message.fileId || !message.encryptedMetadata) return message;
 
   const decrypted = await decryptFromSender(message.encryptedMetadata, message.senderId, ctx);
-  if (!decrypted) return message;
+  if (!decrypted) throw new Error('Unable to decrypt file metadata');
 
   try {
     const parsed = JSON.parse(decrypted);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid metadata');
+    for (const field of ['fileName', 'fileType', 'contentType', 'previewContent', 'collectionId']) {
+      if (parsed[field] !== undefined && typeof parsed[field] !== 'string') throw new Error(`Invalid ${field}`);
+    }
+    for (const field of ['fileSize', 'collectionTotal', 'collectionIndex']) {
+      if (parsed[field] !== undefined && (!Number.isSafeInteger(parsed[field]) || parsed[field] < 0)) {
+        throw new Error(`Invalid ${field}`);
+      }
+    }
     return {
       ...message,
       fileName: parsed.fileName,
@@ -81,7 +90,6 @@ export const decryptMetadata = async (
       collectionIndex: parsed.collectionIndex,
     };
   } catch {
-    console.error('Failed to parse decrypted metadata');
-    return message;
+    throw new Error('Invalid encrypted file metadata');
   }
 };

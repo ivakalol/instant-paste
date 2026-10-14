@@ -13,6 +13,7 @@ export interface UploadDeps {
   encryptionCtx: EncryptionContext;
   encryptFiles: boolean;
   onUpdate: (update: WebSocketMessage) => void;
+  signal?: AbortSignal;
 }
 
 export interface FileUploadCollection {
@@ -29,12 +30,17 @@ export const uploadFile = async (
   deps: UploadDeps,
   collection?: FileUploadCollection,
 ): Promise<void> => {
-  const { ws, sendMessage, encryptionCtx, encryptFiles, onUpdate } = deps;
+  const { ws, sendMessage, encryptionCtx, encryptFiles, onUpdate, signal } = deps;
+  const checkConnection = () => {
+    if (signal?.aborted) throw new Error('File transfer cancelled');
+    if (ws.readyState !== WebSocket.OPEN) throw new Error('Connection lost during upload');
+  };
+  checkConnection();
 
   const recipients = Object.values(encryptionCtx.roomClients)
     .filter(c => c.id !== encryptionCtx.clientId);
   const requiresEncryption = encryptionCtx.isE2eeEnabled && encryptFiles && recipients.length > 0;
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+  const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
 
   // 1. Generate & distribute per-file data key
   let dataKey: CryptoKey | undefined;
@@ -60,6 +66,7 @@ export const uploadFile = async (
   }
 
   // 2. Announce metadata
+  checkConnection();
   const fileStartSent = await sendMessage({
     type: 'file-start', fileId,
     fileName: file.name, fileSize: file.size, fileType: file.type,
@@ -94,12 +101,16 @@ export const uploadFile = async (
   let lastReportedProgress = 0;
 
   for (let i = 0; i < totalChunks; i++) {
+    checkConnection();
     if (ws.readyState !== WebSocket.OPEN) {
       onUpdate({ type: 'file-error', fileId, message: 'Connection lost during upload' });
       return;
     }
 
+    const waitStarted = Date.now();
     while (ws.bufferedAmount > BUFFER_HIGH_WATER) {
+      checkConnection();
+      if (Date.now() - waitStarted > 30000) throw new Error('Upload stalled. Please retry.');
       await new Promise(r => setTimeout(r, BACKPRESSURE_POLL_MS));
       if (ws.readyState !== WebSocket.OPEN) {
         onUpdate({ type: 'file-error', fileId, message: 'Connection lost during upload' });
@@ -119,6 +130,7 @@ export const uploadFile = async (
     }
 
     const frame = encodeBinaryFrame(fileId, i, totalChunks, payload);
+    checkConnection();
     ws.send(frame);
 
     const progress = ((i + 1) / totalChunks) * 100;

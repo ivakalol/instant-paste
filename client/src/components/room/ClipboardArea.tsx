@@ -46,6 +46,8 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
   const [loadErrors, setLoadErrors] = useState<Set<string>>(new Set());
   const [recentlyCompleted, setRecentlyCompleted] = useState<Set<string>>(new Set());
+  const seenCompleted = useRef(new Set<string>());
+  const completionTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const [viewerItem, setViewerItem] = useState<ClipboardHistoryItem | null>(null);
   const [passwordRequest, setPasswordRequest] = useState<{
     resolve: (password: string | null) => void;
@@ -76,25 +78,33 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
     const completedItems = history.filter(item =>
       item.status === 'complete' &&
       (item.fileId || item.type === 'collection') &&
-      !recentlyCompleted.has(item.id)
+      !seenCompleted.current.has(item.id)
     );
 
     if (completedItems.length > 0) {
-      const newCompleted = new Set(recentlyCompleted);
-      completedItems.forEach(item => newCompleted.add(item.id));
-      setRecentlyCompleted(newCompleted);
+      completedItems.forEach(item => seenCompleted.current.add(item.id));
+      setRecentlyCompleted(previous => new Set([...previous, ...completedItems.map(item => item.id)]));
 
       completedItems.forEach(item => {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          completionTimers.current.delete(timer);
           setRecentlyCompleted(prev => {
             const newSet = new Set(prev);
             newSet.delete(item.id);
             return newSet;
           });
         }, 5000); // Show status for 5 seconds
+        completionTimers.current.add(timer);
       });
     }
-  }, [history, recentlyCompleted]);
+    const currentIds = new Set(history.map(item => item.id));
+    seenCompleted.current.forEach(id => { if (!currentIds.has(id)) seenCompleted.current.delete(id); });
+  }, [history]);
+
+  useEffect(() => {
+    const timers = completionTimers.current;
+    return () => { timers.forEach(clearTimeout); timers.clear(); };
+  }, []);
 
   const handleMediaError = (id: string) => {
     setLoadErrors(prev => new Set(prev).add(id));
@@ -128,8 +138,9 @@ const ClipboardArea: React.FC<ClipboardAreaProps> = ({
           body: JSON.stringify({ password: enteredPassword }),
         });
         const data = await response.json();
-        if (!data.valid || typeof data.uploadToken !== 'string') {
-          showToast('Incorrect password.', 'error');
+        if (!response.ok || !data.valid || typeof data.uploadToken !== 'string') {
+          showToast(response.status === 429 ? 'Too many attempts. Please try again later.'
+            : response.status === 401 ? 'Incorrect password.' : 'Password verification is unavailable.', 'error');
           return false;
         }
         uploadToken = data.uploadToken;

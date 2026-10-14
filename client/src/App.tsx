@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useParams } from 'react-router-dom';
 import RoomSelector from './components/room/RoomSelector';
 import Room from './pages/Room';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -7,15 +7,20 @@ import NotFound from './pages/NotFound';
 import './App.css';
 
 const RoomSelectorRoute: React.FC = () => {
-  const { createRoom, joinRoom, isReady } = useWebSocket();
+  const { createRoom, joinRoom, isReady, roomState } = useWebSocket();
 
   return (
     <RoomSelector
       onCreateRoom={createRoom}
       onJoinRoom={joinRoom}
-      isReady={isReady}
+      isReady={isReady && roomState.connected}
     />
   );
+};
+
+const RoomRoute: React.FC = () => {
+  const { roomId } = useParams();
+  return <Room key={roomId} />;
 };
 
 const AppContent: React.FC = () => {
@@ -36,7 +41,7 @@ const AppContent: React.FC = () => {
       <main className="container">
         <Routes>
           <Route path="/" element={<RoomSelectorRoute />} />
-          <Route path="/:roomId" element={<Room />} />
+          <Route path="/:roomId" element={<RoomRoute />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

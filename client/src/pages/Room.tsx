@@ -10,7 +10,6 @@ import type { ClipboardItem } from '../types/ClipboardItem';
 import { WebSocketMessage } from '../types/index';
 import { createImageThumbnail } from '../utils/image';
 import '../App.css';
-//this is a test comit
 const MAX_HISTORY = 20;
 const ALLOWED_CONTENT_TYPES: ReadonlySet<ClipboardItem['type']> = new Set([
   'text', 'rich-text', 'image', 'video', 'file', 'audio', 'application', 'collection',
@@ -298,7 +297,8 @@ interface ToastState {
 }
 
 const Room: React.FC = () => {
-  const { roomId } = useParams<{ roomId: string }>();
+  const { roomId: routeRoomId } = useParams<{ roomId: string }>();
+  const roomId = routeRoomId?.toUpperCase();
   const navigate = useNavigate();
   const [history, setHistory] = useState<ClipboardItem[]>([]);
   const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
@@ -517,26 +517,34 @@ const Room: React.FC = () => {
 
   useEffect(() => {
     if (!roomId) return;
+    let cancelled = false;
     const fetchHistory = async () => {
       try {
         const savedHistory = await loadHistory(roomId);
-        if (savedHistory && Array.isArray(savedHistory)) {
+        if (!cancelled && savedHistory && Array.isArray(savedHistory)) {
           // File blob URLs are session-local, so only text-like entries survive reloads.
-          setHistory(savedHistory.filter(item => (
+          const restored = savedHistory.filter(item => (
             (item.status === 'complete' || !item.status)
             && item.type !== 'collection'
             && !item.fileId
             && !item.content?.startsWith('blob:')
-          )));
+            && Date.now() - item.timestamp < 30 * 60 * 1000
+          ));
+          // Network messages can arrive while IndexedDB is opening; keep those clips.
+          setHistory(current => trimHistory([
+            ...current,
+            ...restored.filter(item => !current.some(existing => existing.id === item.id)),
+          ]));
         }
       } catch (error) {
         console.error('Failed to load history from IndexedDB:', error);
-        showToast('Could not load history.', 'error');
+        if (!cancelled) showToast('Could not load history.', 'error');
       } finally {
-        setIsHistoryLoaded(true);
+        if (!cancelled) setIsHistoryLoaded(true);
       }
     };
     fetchHistory();
+    return () => { cancelled = true; };
   }, [roomId, showToast]);
 
   useEffect(() => {
@@ -674,7 +682,9 @@ const Room: React.FC = () => {
   const handlePaste = useCallback(async (type: ClipboardItem['type'], content: string) => {
     // Check if content is too large for a single WebSocket message (limit is 2MB, safety margin 1MB)
     const sizeInBytes = new Blob([content]).size;
-    if (sizeInBytes > 1024 * 1024) {
+    // Each recipient adds a base64 ciphertext copy to the JSON envelope.
+    const recipients = Math.max(1, roomState.clientCount - 1);
+    if (sizeInBytes > Math.min(1024 * 1024, Math.floor(5 * 1024 * 1024 / recipients))) {
       showToast('Content too large. sending as file...', 'info');
       const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = type === 'rich-text' ? `Rich Text ${safeTimestamp}.html` : `Large Text ${safeTimestamp}.txt`;
@@ -705,7 +715,7 @@ const Room: React.FC = () => {
     if (!sent) {
       showToast('Failed to send content. Check connection or E2EE key sync.', 'error');
     }
-  }, [sendMessage, showToast, handleFileSelect, prependHistoryItem]);
+  }, [sendMessage, showToast, handleFileSelect, prependHistoryItem, roomState.clientCount]);
 
   const handleLeaveRoom = () => {
     if (roomId) {

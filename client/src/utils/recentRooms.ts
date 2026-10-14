@@ -4,7 +4,11 @@ const MAX_RECENT_ROOMS = 5;
 export const getRecentRooms = (): string[] => {
   try {
     const rooms = localStorage.getItem(RECENT_ROOMS_KEY);
-    return rooms ? JSON.parse(rooms) : [];
+    const parsed: unknown = rooms ? JSON.parse(rooms) : [];
+    return Array.isArray(parsed)
+      ? Array.from(new Set(parsed.filter((room): room is string => typeof room === 'string' && /^[A-Za-z0-9]{6}$/.test(room))
+        .map(room => room.toUpperCase()))).slice(0, MAX_RECENT_ROOMS)
+      : [];
   } catch (error) {
     console.error('Error reading recent rooms from localStorage', error);
     return [];

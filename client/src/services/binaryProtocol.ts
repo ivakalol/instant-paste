@@ -5,7 +5,7 @@ export const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB
 export const BUFFER_HIGH_WATER = 24 * 1024 * 1024; // 24 MB
 
 const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+const textDecoder = new TextDecoder('utf-8', { fatal: true });
 
 export const toBlobArrayBuffer = (data: Uint8Array): ArrayBuffer => {
   if (
@@ -50,7 +50,7 @@ export const decodeBinaryFrame = (
   let o = 0;
   const idLen = view.getUint16(o); o += 2;
 
-  if (idLen === 0 || idLen > 1024 || o + idLen + 8 > buf.byteLength) {
+  if (idLen === 0 || idLen > 128 || o + idLen + 8 > buf.byteLength) {
     throw new Error('Invalid binary frame: bad file ID length');
   }
 
@@ -58,7 +58,7 @@ export const decodeBinaryFrame = (
   const chunkIndex = view.getUint32(o); o += 4;
   const totalChunks = view.getUint32(o); o += 4;
 
-  if (totalChunks === 0 || chunkIndex >= totalChunks) {
+  if (!/^[A-Za-z0-9._:-]+$/.test(fileId) || totalChunks === 0 || totalChunks > 4096 || chunkIndex >= totalChunks) {
     throw new Error('Invalid binary frame: chunk index out of range');
   }
 

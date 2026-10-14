@@ -1,6 +1,6 @@
 # Feature List
 
-Complete list of features implemented in Instant Paste.
+Historical feature checklist. For verified current behavior and limitations, see [AUDIT.md](./AUDIT.md).
 
 ## Core Features
 
@@ -23,7 +23,7 @@ Complete list of features implemented in Instant Paste.
 
 ### Clipboard History
 - ✅ Store last 20 clipboard items
-- ✅ Persist history in localStorage
+- ✅ Persist completed text history in IndexedDB
 - ✅ Display preview for each item type
 - ✅ Text preview (truncated for long content)
 - ✅ Image thumbnails
@@ -39,7 +39,7 @@ Complete list of features implemented in Instant Paste.
 ### Security & Privacy
 - ✅ Optional AES-256 encryption
 - ✅ Client-side encryption (zero-knowledge)
-- ✅ Password-protected rooms
+- ✅ Password authorization for large uploads (rooms themselves are not password protected)
 - ✅ No server-side data storage
 - ✅ Room-based isolation
 - ✅ Secure WebSocket communication
@@ -59,7 +59,7 @@ Complete list of features implemented in Instant Paste.
 - ✅ WebSocket real-time communication
 - ✅ Automatic reconnection on disconnect
 - ✅ Connection heartbeat (30s intervals)
-- ✅ Binary data support via base64
+- ✅ Binary chunked file transfers
 - ✅ Efficient message routing
 - ✅ Graceful error handling
 - ✅ TypeScript type safety
@@ -69,7 +69,7 @@ Complete list of features implemented in Instant Paste.
 - ✅ Web app manifest
 - ✅ Service worker ready (optional)
 - ✅ Installable on supported platforms
-- ✅ Offline-ready assets
+- Online connection required for synchronization
 
 ### Browser Compatibility
 - ✅ Chrome/Chromium (full support)
@@ -154,6 +154,6 @@ Complete list of features implemented in Instant Paste.
 
 ---
 
-**Total Implemented Features**: 60+  
-**Test Coverage**: Manual testing completed  
+**Total Implemented Features**: 60+
+**Test Coverage**: Manual testing completed
 **Documentation Pages**: 4 (README, QUICKSTART, CONTRIBUTING, FEATURES)

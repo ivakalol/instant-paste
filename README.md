@@ -37,6 +37,8 @@ A real-time, end-to-end encrypted clipboard and file sharing application.
 
 ## Contributing 🤝
 
+See [AUDIT.md](./AUDIT.md) for the current architecture, reliability changes, verification, and remaining limits.
+
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License 📄

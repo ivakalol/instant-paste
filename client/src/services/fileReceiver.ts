@@ -4,10 +4,12 @@ import { decodeBinaryFrame } from './binaryProtocol';
 import { decryptChunk } from '../utils/e2ee';
 import { WebSocketMessage } from '../types';
 
-const MAX_ORPHAN_BINARY_CHUNKS_PER_FILE = 32;
+const MAX_ORPHAN_BYTES = 16 * 1024 * 1024;
 
 export interface ActiveFileTransfer {
   dataKey?: CryptoKey;
+  requiresEncryption?: boolean;
+  receivedBytes?: number;
   totalChunks: number;
   receivedChunks: Set<number>;
   metadata: {
@@ -27,6 +29,7 @@ export interface FileReceiverState {
   memoryChunks: Map<string, (BlobPart | null)[]>;
   orphanBinaryChunks: Map<string, ArrayBuffer[]>;
   pendingDataKeys: Map<string, CryptoKey>;
+  encryptedFiles: Set<string>;
 }
 
 export const createFileReceiverState = (): FileReceiverState => ({
@@ -34,7 +37,16 @@ export const createFileReceiverState = (): FileReceiverState => ({
   memoryChunks: new Map(),
   orphanBinaryChunks: new Map(),
   pendingDataKeys: new Map(),
+  encryptedFiles: new Set(),
 });
+
+export const clearReceivedFile = (state: FileReceiverState, fileId: string): void => {
+  state.activeTransfers.delete(fileId);
+  state.memoryChunks.delete(fileId);
+  state.orphanBinaryChunks.delete(fileId);
+  state.pendingDataKeys.delete(fileId);
+  state.encryptedFiles.delete(fileId);
+};
 
 export const handleBinaryChunk = async (
   frameData: ArrayBuffer,
@@ -53,6 +65,10 @@ export const handleBinaryChunk = async (
   }
 
   const { fileId, chunkIndex, totalChunks, data: chunkData } = decoded;
+  const fail = (message: string) => {
+    clearReceivedFile(state, fileId);
+    onError({ type: 'file-error', fileId, message });
+  };
 
   const transfer = state.activeTransfers.get(fileId);
   if (!transfer || transfer.totalChunks === 0) {
@@ -60,9 +76,10 @@ export const handleBinaryChunk = async (
       state.orphanBinaryChunks.set(fileId, []);
     }
     const orphanChunks = state.orphanBinaryChunks.get(fileId)!;
-    if (orphanChunks.length >= MAX_ORPHAN_BINARY_CHUNKS_PER_FILE) {
-      onError({ type: 'file-error', fileId, message: 'Received file chunks before metadata' });
-      state.orphanBinaryChunks.delete(fileId);
+    const orphanBytes = [...state.orphanBinaryChunks.values()]
+      .reduce((sum, chunks) => sum + chunks.reduce((size, chunk) => size + chunk.byteLength, 0), 0);
+    if (state.orphanBinaryChunks.size > 16 || orphanBytes + frameData.byteLength > MAX_ORPHAN_BYTES) {
+      fail('Received file chunks before metadata');
       return;
     }
     orphanChunks.push(frameData);
@@ -70,11 +87,15 @@ export const handleBinaryChunk = async (
   }
 
   if (transfer.totalChunks !== totalChunks) {
-    onError({ type: 'file-error', fileId, message: 'File chunk metadata mismatch' });
+    fail('File chunk metadata mismatch');
     return;
   }
 
   if (transfer.receivedChunks.has(chunkIndex)) return;
+  if (transfer.requiresEncryption && !transfer.dataKey) {
+    fail('Unable to decrypt file key');
+    return;
+  }
 
   let plainBytes: Uint8Array;
   if (transfer.dataKey) {
@@ -82,18 +103,26 @@ export const handleBinaryChunk = async (
       plainBytes = await decryptChunk(chunkData, transfer.dataKey);
     } catch (e) {
       console.error(`Chunk ${chunkIndex} decryption failed for ${fileId}:`, e);
-      onError({ type: 'file-error', fileId, message: 'Chunk decryption failed' });
+      fail('Chunk decryption failed');
       return;
     }
   } else {
     plainBytes = chunkData;
   }
 
+  // Decryption may finish after cancellation or socket cleanup.
+  if (state.activeTransfers.get(fileId) !== transfer) return;
+  transfer.receivedBytes = (transfer.receivedBytes || 0) + plainBytes.byteLength;
+  if (transfer.metadata.fileSize !== undefined && transfer.receivedBytes > transfer.metadata.fileSize) {
+    fail('File exceeds its declared size');
+    return;
+  }
   if (!state.memoryChunks.has(fileId)) {
     state.memoryChunks.set(fileId, new Array(totalChunks).fill(null));
   }
 
-  state.memoryChunks.get(fileId)![chunkIndex] = plainBytes;
+  // Blob parts can be backed by browser-managed storage instead of retaining JS buffers.
+  state.memoryChunks.get(fileId)![chunkIndex] = new Blob([plainBytes]);
   transfer.receivedChunks.add(chunkIndex);
 
   const progress = (transfer.receivedChunks.size / totalChunks) * 100;
@@ -103,6 +132,10 @@ export const handleBinaryChunk = async (
   }
 
   if (transfer.receivedChunks.size === totalChunks) {
+    if (transfer.metadata.fileSize !== undefined && transfer.receivedBytes !== transfer.metadata.fileSize) {
+      fail('File size does not match metadata');
+      return;
+    }
     try {
       const chunks = state.memoryChunks.get(fileId)!;
       const blob = new Blob(chunks.map(b => b!), {
@@ -114,8 +147,7 @@ export const handleBinaryChunk = async (
       console.error('File assembly failed:', e);
       onError({ type: 'file-error', fileId, message: 'File assembly failed' });
     } finally {
-      state.memoryChunks.delete(fileId);
-      state.activeTransfers.delete(fileId);
+      clearReceivedFile(state, fileId);
     }
   }
 };

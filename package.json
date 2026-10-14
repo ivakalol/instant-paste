@@ -29,6 +29,9 @@
   "engines": {
     "node": ">=14.0.0"
   },
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "devDependencies": {
     "baseline-browser-mapping": "^2.10.0"
   }

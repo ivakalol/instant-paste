@@ -35,6 +35,7 @@ jobs:
         run: |
           mkdir -p release/client
           cp server.js release/
+          cp -r server release/server
           cp package.json release/
           cp package-lock.json release/ 2>/dev/null || true
           cp -r client/build release/client/build

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import './Toast.css';
 
 interface ToastProps {
@@ -14,13 +14,15 @@ const Toast: React.FC<ToastProps> = ({
   onClose, 
   duration = 3000 
 }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const timer = setTimeout(() => {
-      onClose();
+      onCloseRef.current();
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [duration, onClose]);
+  }, [duration, message, type]);
 
   return (
     <div
