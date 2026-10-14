@@ -7,12 +7,13 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const crypto = require('crypto');
+const { validateMessage, normalizeManifestPath } = require('./server/protocol');
 
 const ONE_MIB = 1024 * 1024;
 
 const parsePositiveInt = (value, fallback) => {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 // =============================================================================
@@ -29,9 +30,12 @@ const CONFIG = {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
-  VERIFY_PASSWORD_MAX_ATTEMPTS: Number(process.env.VERIFY_PASSWORD_MAX_ATTEMPTS || 5),
-  VERIFY_PASSWORD_WINDOW_MS: Number(process.env.VERIFY_PASSWORD_WINDOW_MS || 5 * 60 * 1000),
-  VERIFY_PASSWORD_LOCK_MS: Number(process.env.VERIFY_PASSWORD_LOCK_MS || 10 * 60 * 1000),
+  VERIFY_PASSWORD_MAX_ATTEMPTS: parsePositiveInt(process.env.VERIFY_PASSWORD_MAX_ATTEMPTS, 5),
+  VERIFY_PASSWORD_WINDOW_MS: parsePositiveInt(process.env.VERIFY_PASSWORD_WINDOW_MS, 5 * 60 * 1000),
+  VERIFY_PASSWORD_LOCK_MS: parsePositiveInt(process.env.VERIFY_PASSWORD_LOCK_MS, 10 * 60 * 1000),
+  MAX_ACTIVE_TRANSFERS_PER_CLIENT: 16,
+  MAX_CONNECTIONS: parsePositiveInt(process.env.MAX_CONNECTIONS, 1000),
+  TRANSFER_IDLE_TIMEOUT_MS: 5 * 60 * 1000,
 
   // Room settings
   MAX_ROOM_SIZE: 10,
@@ -105,19 +109,19 @@ const LOG_LEVELS = {
   DEBUG: 'DEBUG',
 };
 
+const formatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Europe/Sofia',
+  hour12: false,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+});
+
 function log(level, message, ...args) {
   const now = new Date();
-
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Sofia',
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  });
 
   const p = formatter.formatToParts(now).reduce((acc, part) => {
     acc[part.type] = part.value;
@@ -276,37 +280,18 @@ app.use(
 
 app.use(express.json({ limit: CONFIG.HTTP_JSON_LIMIT }));
 
+app.use((error, req, res, next) => {
+  if (!error) return next();
+  const status = error.status === 413 ? 413 : 400;
+  res.status(status).json({ error: status === 413 ? 'Request body is too large' : 'Invalid JSON request body' });
+});
+
 // =============================================================================
 // DYNAMIC PWA MANIFEST
 // =============================================================================
 
 app.get('/manifest.json', (req, res) => {
-  let requestedPath = req.query.path;
-
-  // Default to root if path is missing/invalid.
-  if (typeof requestedPath !== 'string' || !requestedPath.startsWith('/')) {
-    requestedPath = '/';
-  }
-
-  // Remove query string / hash if somehow included.
-  requestedPath = requestedPath
-    .split('?')[0]
-    .split('#')[0];
-
-  // Make sure it starts with /
-  if (!requestedPath.startsWith('/')) {
-    requestedPath = `/${requestedPath}`;
-  }
-
-  // Normalize trailing slash.
-  if (requestedPath.length > 1) {
-    requestedPath = requestedPath.replace(/\/+$/, '');
-  }
-
-  // Never allow manifest.json itself to become an application path.
-  if (requestedPath === '/manifest.json') {
-    requestedPath = '/';
-  }
+  const requestedPath = normalizeManifestPath(req.query.path);
 
   const isRoot = requestedPath === '/';
 
@@ -403,6 +388,10 @@ app.use(
 // =============================================================================
 
 server.on('upgrade', (request, socket, head) => {
+  if (shuttingDown || wss.clients.size >= CONFIG.MAX_CONNECTIONS) {
+    socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+    return;
+  }
   const origin = request.headers.origin;
 
   if (!isOriginAllowed(origin)) {
@@ -425,17 +414,8 @@ server.on('upgrade', (request, socket, head) => {
 // UTILITY FUNCTIONS
 // =============================================================================
 
-function sendError(ws, code, message) {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(
-      JSON.stringify({
-        type: 'error',
-        code,
-        message,
-      })
-    );
-  }
-
+function sendError(ws, code, message, fileId) {
+  sendMessage(ws, { type: 'error', code, message, ...(isValidFileId(fileId) && { fileId }) });
   metrics.errors++;
 }
 
@@ -509,6 +489,8 @@ function checkRateLimit(ws) {
     );
 
     metrics.rateLimitHits++;
+    // Dropping arbitrary chunks silently corrupts a stream; force an explicit reconnect.
+    ws.close(1008, 'Message rate limit exceeded');
 
     return false;
   }
@@ -559,7 +541,11 @@ function getVerifyPasswordAttemptState(ip) {
   const now = Date.now();
   const existing = verifyPasswordAttempts.get(ip);
 
-  if (!existing || now > existing.resetTime) {
+  // A lock may outlive the attempt window; never reset an active lock.
+  if (!existing || (now > existing.resetTime && now >= existing.lockUntil)) {
+    if (!existing && verifyPasswordAttempts.size >= 10000) {
+      return { attempts: 0, resetTime: now + CONFIG.VERIFY_PASSWORD_WINDOW_MS, lockUntil: now + 60000 };
+    }
     const freshState = {
       attempts: 0,
       resetTime: now + CONFIG.VERIFY_PASSWORD_WINDOW_MS,
@@ -802,6 +788,8 @@ function startFileTransfer(
       declaredSize:
         options.declaredSize ?? null,
       totalChunks: null,
+      nextChunkIndex: 0,
+      lastActivity: Date.now(),
       startedAt: Date.now(),
     }
   );
@@ -845,7 +833,7 @@ function cancelFileTransfer(
   code,
   message
 ) {
-  sendError(ws, code, message);
+  sendError(ws, code, message, fileId);
 
   broadcastToRoom(
     roomId,
@@ -870,7 +858,8 @@ function registerTransferBytes(
   ws,
   fileId,
   totalChunks,
-  bytes
+  bytes,
+  chunkIndex
 ) {
   const transfer = getTransferState(
     room,
@@ -882,15 +871,16 @@ function registerTransferBytes(
     sendError(
       ws,
       ERROR_CODES.FILE_TRANSFER_REQUIRED,
-      'File transfer must be announced before chunks are sent'
+      'File transfer must be announced before chunks are sent',
+      fileId
     );
 
     return false;
   }
 
   if (
-    transfer.totalChunks !== null &&
-    transfer.totalChunks !== totalChunks
+    (transfer.totalChunks !== null && transfer.totalChunks !== totalChunks) ||
+    chunkIndex !== transfer.nextChunkIndex
   ) {
     cancelFileTransfer(
       roomId,
@@ -908,6 +898,11 @@ function registerTransferBytes(
 
   const nextBytes =
     transfer.bytesRelayed + bytes;
+
+  if (transfer.declaredSize !== null && nextBytes > transfer.declaredSize + CONFIG.FILE_SIZE_ENFORCEMENT_GRACE_BYTES) {
+    cancelFileTransfer(roomId, room, ws, fileId, ERROR_CODES.FILE_TOO_LARGE, 'File exceeds its declared size');
+    return false;
+  }
 
   if (
     nextBytes >
@@ -945,6 +940,8 @@ function registerTransferBytes(
   }
 
   transfer.bytesRelayed = nextBytes;
+  transfer.nextChunkIndex++;
+  transfer.lastActivity = Date.now();
 
   return true;
 }
@@ -1209,6 +1206,12 @@ function handleJoin(
 
   roomId = roomId.toUpperCase();
 
+  const destination = rooms.get(roomId);
+  if (destination && !destination.clients.has(ws.id) && destination.clients.size >= CONFIG.MAX_ROOM_SIZE) {
+    sendError(ws, ERROR_CODES.ROOM_FULL, 'Room is full');
+    return;
+  }
+
   if (ws.roomId) {
     handleLeave(ws);
   }
@@ -1463,6 +1466,11 @@ function handleClipboard(
 
   if (!room) return;
 
+  if (data.fileId && !getTransferState(room, ws, data.fileId)) {
+    sendError(ws, ERROR_CODES.FILE_TRANSFER_REQUIRED, 'File transfer must be announced before metadata', data.fileId);
+    return;
+  }
+
   room.lastActivity =
     Date.now();
 
@@ -1541,7 +1549,8 @@ function handleFileChunk(
       ws,
       data.fileId,
       data.totalChunks,
-      chunkBytes
+      chunkBytes,
+      data.chunkIndex
     )
   ) {
     return;
@@ -1600,7 +1609,8 @@ function handleFileStart(
     sendError(
       ws,
       validation.code,
-      validation.message
+      validation.message,
+      data.fileId
     );
 
     return;
@@ -1610,6 +1620,16 @@ function handleFileStart(
     rooms.get(ws.roomId);
 
   if (!room) return;
+
+  // Binary frames contain only a file ID, so active IDs must be unique within a room.
+  if ([...room.activeTransfers.values()].some(ids => ids.has(data.fileId))) {
+    sendError(ws, ERROR_CODES.INVALID_FILE_ID, 'File ID is already in use', data.fileId);
+    return;
+  }
+  if ((room.activeTransfers.get(ws.id)?.size || 0) >= CONFIG.MAX_ACTIVE_TRANSFERS_PER_CLIENT) {
+    sendError(ws, ERROR_CODES.RATE_LIMITED, 'Too many active file transfers', data.fileId);
+    return;
+  }
 
   room.lastActivity =
     Date.now();
@@ -1697,7 +1717,8 @@ function handleBinaryRelay(
       ws,
       header.fileId,
       header.totalChunks,
-      header.payloadLength
+      header.payloadLength,
+      header.chunkIndex
     )
   ) {
     return;
@@ -1796,6 +1817,11 @@ function handleFileKey(
     rooms.get(ws.roomId);
 
   if (!room) return;
+
+  if ([...room.activeTransfers.entries()].some(([id, files]) => id !== ws.id && files.has(data.fileId))) {
+    sendError(ws, ERROR_CODES.INVALID_FILE_ID, 'File ID is already in use', data.fileId);
+    return;
+  }
 
   room.lastActivity =
     Date.now();
@@ -1901,14 +1927,13 @@ wss.on(
               message.toString()
             );
 
-          if (
-            !data.type ||
-            typeof data.type !== 'string'
-          ) {
+          const validationError = validateMessage(data, CONFIG.MAX_TOTAL_CHUNKS);
+          if (validationError) {
             sendError(
               ws,
               ERROR_CODES.INVALID_MESSAGE,
-              'Invalid message format'
+              validationError,
+              data?.fileId
             );
 
             return;
@@ -1968,6 +1993,15 @@ wss.on(
                 data
               );
               break;
+
+            case 'file-cancel': {
+              const room = rooms.get(ws.roomId);
+              if (room && getTransferState(room, ws, data.fileId)) {
+                broadcastToRoom(ws.roomId, { type: 'file-cancel', fileId: data.fileId, senderId: ws.id }, ws);
+                finishFileTransfer(room, ws, data.fileId);
+              }
+              break;
+            }
 
             default:
               log(
@@ -2065,6 +2099,14 @@ const inactiveRoomCheckInterval =
 
     rooms.forEach(
       (room, roomId) => {
+        for (const { ws } of room.clients.values()) {
+          for (const fileId of room.activeTransfers.get(ws.id) || []) {
+            const transfer = getTransferState(room, ws, fileId);
+            if (transfer && now - transfer.lastActivity > CONFIG.TRANSFER_IDLE_TIMEOUT_MS) {
+              cancelFileTransfer(roomId, room, ws, fileId, ERROR_CODES.INVALID_MESSAGE, 'File transfer timed out');
+            }
+          }
+        }
         if (
           now -
             room.lastActivity >
@@ -2114,6 +2156,10 @@ const roomStatusInterval =
 app.post(
   '/api/verify-upload-password',
   (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.headers.origin && !isOriginAllowed(req.headers.origin)) {
+      return res.status(403).json({ valid: false, error: 'Origin not allowed' });
+    }
     const ip =
       getClientIp(req);
 
@@ -2127,6 +2173,7 @@ app.post(
     if (
       state.lockUntil > now
     ) {
+      res.setHeader('Retry-After', Math.ceil((state.lockUntil - now) / 1000));
       return res
         .status(429)
         .json({
@@ -2136,8 +2183,7 @@ app.post(
         });
     }
 
-    const { password } =
-      req.body;
+    const { password } = req.body || {};
 
     if (
       !CONFIG.LARGE_FILE_PASSWORD
@@ -2475,61 +2521,36 @@ server.listen(
   }
 );
 
-process.on('SIGTERM', () => {
-  log(
-    LOG_LEVELS.INFO,
-    'SIGTERM received, closing server...'
-  );
-
-  wss.clients.forEach(
-    (ws) => {
-      sendMessage(
-        ws,
-        {
-          type:
-            'server-shutdown',
-        }
-      );
-    }
-  );
-
-  server.close(() => {
-    log(
-      LOG_LEVELS.INFO,
-      'Server closed'
-    );
-
-    process.exit(0);
+let shuttingDown = false;
+function shutdown(exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log(LOG_LEVELS.INFO, 'Closing server...');
+  clearInterval(heartbeatInterval);
+  clearInterval(verifyPasswordCleanupInterval);
+  clearInterval(inactiveRoomCheckInterval);
+  clearInterval(roomStatusInterval);
+  for (const ws of wss.clients) {
+    sendMessage(ws, { type: 'server-shutdown' });
+    ws.close(1001, 'Server shutting down');
+  }
+  // HTTP close does not close upgraded sockets. Bound the drain for stalled peers.
+  const deadline = setTimeout(() => {
+    for (const ws of wss.clients) ws.terminate();
+    process.exit(exitCode);
+  }, 5000);
+  deadline.unref();
+  Promise.all([
+    new Promise(resolve => wss.close(resolve)),
+    new Promise(resolve => server.close(resolve)),
+  ]).then(() => {
+    clearTimeout(deadline);
+    process.exit(exitCode);
   });
-});
+}
 
-process.on('SIGINT', () => {
-  log(
-    LOG_LEVELS.INFO,
-    'SIGINT received, closing server...'
-  );
-
-  wss.clients.forEach(
-    (ws) => {
-      sendMessage(
-        ws,
-        {
-          type:
-            'server-shutdown',
-        }
-      );
-    }
-  );
-
-  server.close(() => {
-    log(
-      LOG_LEVELS.INFO,
-      'Server closed'
-    );
-
-    process.exit(0);
-  });
-});
+process.on('SIGTERM', () => shutdown());
+process.on('SIGINT', () => shutdown());
 
 // =============================================================================
 // PROCESS ERROR HANDLERS
@@ -2545,6 +2566,7 @@ process.on(
     );
 
     metrics.errors++;
+    shutdown(1);
   }
 );
 
@@ -2558,5 +2580,6 @@ process.on(
       'reason:',
       reason
     );
+    shutdown(1);
   }
 );
